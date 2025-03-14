@@ -111,7 +111,6 @@ def test(param):
             block_ip(client_ip)
         
         return jsonify({"error": "Acceso bloqueado por posible intento de SQL injection"}), 403
-    
     # Si no hay inyección, procesar normalmente
     write_log(f"Parámetro test: '{param}' desde {request.remote_addr}")
     return jsonify({"param": param}), 200
@@ -252,6 +251,9 @@ if __name__ == "__main__":
     
     print("API iniciada en http://0.0.0.0:5000/")
     print("Logs disponibles en http://0.0.0.0:5000/logs")
+    
+    # Iniciar aplicación
+    app.run(host='0.0.0.0', debug=True)
     
     # Iniciar aplicación
     app.run(host='0.0.0.0', debug=True)
