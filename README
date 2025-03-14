@@ -1,29 +1,29 @@
-# SQLi-Shield: API de Protección contra Inyecciones SQL
+SQLi-Shield: Protección Contra Inyecciones SQL
+Descripción del Proyecto
+SQLi-Shield es una API de protección desarrollada en Flask que actúa como una capa de defensa avanzada contra ataques de inyección SQL (SQLi) para máquinas y aplicaciones vulnerables. Este proyecto nace de la necesidad de proteger sistemas existentes que pueden contener vulnerabilidades sin requerir modificaciones en su código fuente.
+La API funciona como un proxy de seguridad que se sitúa entre los usuarios y la aplicación vulnerable, interceptando todas las solicitudes entrantes. Cada parámetro, ya sea en la URL, formularios o datos JSON, es analizado en busca de patrones maliciosos utilizando una extensa base de datos derivada de PayloadsAllTheThings.
+Cuando se detecta un intento de SQLi, SQLi-Shield no solo bloquea la solicitud, sino que también registra detalladamente el incidente y bloquea automáticamente la IP del atacante a nivel de sistema mediante iptables, proporcionando una protección persistente contra atacantes recurrentes.
+Características Principales
 
-Una API de protección que actúa como escudo para máquinas vulnerables, bloqueando intentos de inyección SQL y registrando actividades sospechosas.
+Detección en Tiempo Real: Analiza cada solicitud utilizando más de 30 patrones conocidos de inyección SQL.
+Bloqueo Automático: Implementa reglas de firewall con iptables para bloquear IPs maliciosas de forma inmediata.
+Panel de Control Interactivo: Proporciona una interfaz web intuitiva que muestra estadísticas en tiempo real, registros de actividad y la lista de IPs bloqueadas.
+Logs Detallados: Mantiene registros exhaustivos de todas las solicitudes, incluyendo parámetros específicos donde se detectaron intentos de SQLi.
+Gestión de IPs Bloqueadas: Permite revisar y desbloquear IPs desde la interfaz web si es necesario.
+Funcionamiento Transparente: Opera como proxy transparente, permitiendo que la aplicación protegida funcione normalmente sin cambios.
+Configuración Flexible: Fácilmente adaptable para proteger diferentes aplicaciones ajustando una simple variable de configuración.
 
-![SQLi-Shield Banner](https://example.com/banner.png)
+Motivación y Contexto
+En entornos de aprendizaje, laboratorios de seguridad o sistemas heredados, es común encontrar aplicaciones intencionalmente vulnerables o con código legacy que no puede ser modificado inmediatamente. SQLi-Shield ofrece una solución práctica para estos escenarios, permitiendo mantener estos sistemas en funcionamiento mientras se mitigan los riesgos de seguridad asociados.
+Este proyecto es particularmente útil para:
 
-## Descripción del proyecto
+Laboratorios educativos donde se practica pentesting
+Protección temporal de aplicaciones mientras se desarrollan soluciones permanentes
+Entornos de investigación de seguridad donde se estudian técnicas de ataque
+Implementación rápida de seguridad en sistemas heredados críticos
 
-SQLi-Shield es una API desarrollada en Flask que funciona como una capa de defensa para máquinas vulnerables a ataques de inyección SQL. La API intercepta todas las solicitudes entrantes, las analiza en busca de patrones maliciosos y bloquea automáticamente las IPs que realizan intentos de ataque utilizando iptables.
+Enfoque Técnico
+SQLi-Shield utiliza un enfoque de "lista negra" sofisticado, combinando coincidencias exactas con patrones regulares para una detección precisa. La integración con iptables garantiza que los atacantes persistentes sean bloqueados a nivel de sistema operativo, reduciendo la carga en la aplicación y proporcionando una capa adicional de protección.
+La interfaz web está diseñada para ser informativa y funcional, proporcionando visibilidad completa sobre los intentos de ataque y permitiendo tomar acciones rápidas cuando sea necesario, todo mientras mantiene un registro completo para análisis forense posterior.
 
-A diferencia de otras soluciones, SQLi-Shield está diseñada específicamente para proteger máquinas existentes que pueden contener vulnerabilidades SQL sin necesidad de modificar su código.
-
-## Características principales
-
-- **Detección avanzada de patrones SQLi**: Basada en la base de datos de PayloadsAllTheThings
-- **Bloqueo automático de IPs**: Integración con iptables para bloquear atacantes a nivel de firewall
-- **Panel de control en tiempo real**: Interfaz web para monitorear actividad y gestionar IPs bloqueadas
-- **Logs detallados**: Registro completo de solicitudes y ataques para auditoría de seguridad
-- **Funcionamiento como proxy de protección**: Protege aplicaciones vulnerables sin modificarlas
-
-## Capturas de pantalla
-
-### Panel de control
-![Dashboard Screenshot](https://example.com/dashboard.png)
-
-### Página de logs
-![Logs Screenshot](https://example.com/logs.png)
-
-## Estructura del proyecto
+Este proyecto representa una solución práctica y efectiva para uno de los vectores de ataque más comunes y peligrosos en aplicaciones web, demostrando cómo un enfoque de seguridad en capas puede proteger sistemas vulnerables sin cambios significativos en su infraestructura.
