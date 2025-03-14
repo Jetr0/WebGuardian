@@ -1,259 +1,29 @@
-from flask import Flask, request, jsonify, render_template_string
-import os
-import subprocess
-import re
-from datetime import datetime
+# SQLi-Shield: API de Protección contra Inyecciones SQL
 
-app = Flask(__name__)
+Una API de protección que actúa como escudo para máquinas vulnerables, bloqueando intentos de inyección SQL y registrando actividades sospechosas.
 
-# Crear directorio para logs
-log_dir = "logs"
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
+![SQLi-Shield Banner](https://example.com/banner.png)
 
-# Archivo de log
-log_file = os.path.join(log_dir, "api_logs.txt")
+## Descripción del proyecto
 
-# Lista de IPs bloqueadas
-blocked_ips_file = os.path.join(log_dir, "blocked_ips.txt")
+SQLi-Shield es una API desarrollada en Flask que funciona como una capa de defensa para máquinas vulnerables a ataques de inyección SQL. La API intercepta todas las solicitudes entrantes, las analiza en busca de patrones maliciosos y bloquea automáticamente las IPs que realizan intentos de ataque utilizando iptables.
 
-# Lista de payloads SQLi básicos de PayloadsAllTheThings
-SQLI_PAYLOADS = [
-    "'", "--", ";", "/*", "*/", "OR 1=1", "' OR '1'='1", "\" OR \"1\"=\"1",
-    "OR 1=1--", "' OR 'x'='x", "UNION SELECT", "DROP TABLE", "INSERT INTO",
-    "DELETE FROM", "UPDATE ", "EXEC ", "SLEEP(", "WAITFOR DELAY", "SELECT *",
-    "admin'--", "' OR 1 -- -", "LIKE '%"
-]
+A diferencia de otras soluciones, SQLi-Shield está diseñada específicamente para proteger máquinas existentes que pueden contener vulnerabilidades SQL sin necesidad de modificar su código.
 
-# Estadísticas
-stats = {
-    'total_requests': 0,
-    'blocked_requests': 0,
-    'blocked_ips': 0,
-    'last_request': None
-}
+## Características principales
 
-def write_log(message, is_blocked=False):
-    """Escribe un mensaje en el archivo de log"""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_type = "BLOQUEADO" if is_blocked else "INFO"
-    log_entry = f"{timestamp} - {log_type} - {message}\n"
-    
-    with open(log_file, "a") as f:
-        f.write(log_entry)
+- **Detección avanzada de patrones SQLi**: Basada en la base de datos de PayloadsAllTheThings
+- **Bloqueo automático de IPs**: Integración con iptables para bloquear atacantes a nivel de firewall
+- **Panel de control en tiempo real**: Interfaz web para monitorear actividad y gestionar IPs bloqueadas
+- **Logs detallados**: Registro completo de solicitudes y ataques para auditoría de seguridad
+- **Funcionamiento como proxy de protección**: Protege aplicaciones vulnerables sin modificarlas
 
-def detect_sqli(text):
-    """Detecta posibles inyecciones SQL basadas en PayloadsAllTheThings"""
-    if not text:
-        return False
-    
-    for payload in SQLI_PAYLOADS:
-        if payload.lower() in text.lower():
-            return True
-    return False
+## Capturas de pantalla
 
-def block_ip(ip):
-    """Bloquea una IP usando iptables"""
-    try:
-        # Verificar si la IP ya está bloqueada
-        check_cmd = f"sudo iptables -L INPUT -v -n | grep {ip}"
-        result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
-        
-        if ip in result.stdout:
-            write_log(f"IP {ip} ya está bloqueada")
-            return
-        
-        # Bloquear la IP
-        block_cmd = f"sudo iptables -A INPUT -s {ip} -j DROP"
-        subprocess.run(block_cmd, shell=True, check=True)
-        
-        # Registrar la IP bloqueada
-        with open(blocked_ips_file, "a") as f:
-            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {ip}\n")
-        
-        stats['blocked_ips'] += 1
-        write_log(f"IP {ip} bloqueada con iptables")
-    except Exception as e:
-        write_log(f"Error al bloquear IP {ip}: {str(e)}")
+### Panel de control
+![Dashboard Screenshot](https://example.com/dashboard.png)
 
-def get_blocked_ips():
-    """Obtiene la lista de IPs bloqueadas"""
-    if os.path.exists(blocked_ips_file):
-        with open(blocked_ips_file, "r") as f:
-            return f.readlines()
-    return []
+### Página de logs
+![Logs Screenshot](https://example.com/logs.png)
 
-@app.route("/")
-def root():
-    # Actualizar estadísticas
-    stats['total_requests'] += 1
-    stats['last_request'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Registrar solicitud
-    write_log(f"Acceso a ruta raíz desde {request.remote_addr}")
-    
-    return "Home"
-
-@app.route("/test/<param>")
-def test(param):
-    # Actualizar estadísticas
-    stats['total_requests'] += 1
-    stats['last_request'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Comprobar inyección en param
-    if detect_sqli(param):
-        stats['blocked_requests'] += 1
-        client_ip = request.remote_addr
-        write_log(f"Intento de SQLi bloqueado en param: '{param}' desde {client_ip}", True)
-        
-        # Bloquear IP
-        if client_ip != "127.0.0.1" and client_ip != "0.0.0.0":  # No bloquear localhost
-            block_ip(client_ip)
-        
-        return jsonify({"error": "Acceso bloqueado por posible intento de SQL injection"}), 403
-    # Si no hay inyección, procesar normalmente
-    write_log(f"Parámetro test: '{param}' desde {request.remote_addr}")
-    return jsonify({"param": param}), 200
-
-@app.route("/query")
-def query_test():
-    # Actualizar estadísticas
-    stats['total_requests'] += 1
-    stats['last_request'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Comprobar inyección en parámetros de consulta
-    for key, value in request.args.items():
-        if detect_sqli(value):
-            stats['blocked_requests'] += 1
-            client_ip = request.remote_addr
-            write_log(f"Intento de SQLi bloqueado en query param '{key}': '{value}' desde {client_ip}", True)
-            
-            # Bloquear IP
-            if client_ip != "127.0.0.1" and client_ip != "0.0.0.0":  # No bloquear localhost
-                block_ip(client_ip)
-            
-            return jsonify({"error": "Acceso bloqueado por posible intento de SQL injection"}), 403
-    
-    # Si no hay inyección, procesar normalmente
-    result = {key: value for key, value in request.args.items()}
-    write_log(f"Consulta con parámetros: {result} desde {request.remote_addr}")
-    return jsonify(result), 200
-
-@app.route("/logs")
-def view_logs():
-    # Actualizar estadísticas
-    stats['total_requests'] += 1
-    stats['last_request'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # HTML para la interfaz web de logs
-    html_template = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>API Logs</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1 { color: #333; }
-            .container { max-width: 1200px; margin: 0 auto; }
-            .stats { background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-            .logs { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-            .blocked-ips { background-color: #fff0f0; padding: 15px; border-radius: 5px; }
-            .log-entry { margin-bottom: 5px; font-family: monospace; }
-            .blocked { color: red; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>API Logs y Estadísticas</h1>
-            
-            <div class="stats">
-                <h2>Estadísticas</h2>
-                <p>Total de solicitudes: {{ stats.total_requests }}</p>
-                <p>Solicitudes bloqueadas: {{ stats.blocked_requests }}</p>
-                <p>IPs bloqueadas: {{ stats.blocked_ips }}</p>
-                <p>Última solicitud: {{ stats.last_request }}</p>
-            </div>
-            
-            <div class="blocked-ips">
-                <h2>IPs Bloqueadas</h2>
-                {% if blocked_ips %}
-                    {% for ip in blocked_ips %}
-                        <div class="log-entry">{{ ip }}</div>
-                    {% endfor %}
-                {% else %}
-                    <p>No hay IPs bloqueadas</p>
-                {% endif %}
-            </div>
-            
-            <div class="logs">
-                <h2>Últimos logs</h2>
-                {% for log in logs %}
-                    <div class="log-entry {% if 'BLOQUEADO' in log %}blocked{% endif %}">
-                        {{ log }}
-                    </div>
-                {% endfor %}
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    
-    # Leer logs existentes
-    logs = []
-    if os.path.exists(log_file):
-        with open(log_file, 'r') as f:
-            logs = f.readlines()
-            logs = logs[-20:] if len(logs) > 20 else logs  # Mostrar últimos 20 logs
-    
-    # Obtener IPs bloqueadas
-    blocked_ips = get_blocked_ips()
-    
-    write_log(f"Vista de logs accedida desde {request.remote_addr}")
-    
-    # Renderizar plantilla
-    return render_template_string(html_template, stats=stats, logs=logs, blocked_ips=blocked_ips)
-
-@app.route("/unblock/<ip>")
-def unblock_ip(ip):
-    """Endpoint para desbloquear una IP específica (solo con fines administrativos)"""
-    try:
-        # Desbloquear la IP
-        unblock_cmd = f"sudo iptables -D INPUT -s {ip} -j DROP"
-        subprocess.run(unblock_cmd, shell=True, check=True)
-        
-        write_log(f"IP {ip} desbloqueada por {request.remote_addr}")
-        
-        # Actualizar archivo de IPs bloqueadas
-        if os.path.exists(blocked_ips_file):
-            with open(blocked_ips_file, "r") as f:
-                lines = f.readlines()
-            
-            with open(blocked_ips_file, "w") as f:
-                for line in lines:
-                    if ip not in line:
-                        f.write(line)
-        
-        stats['blocked_ips'] -= 1
-        
-        return jsonify({"success": f"IP {ip} desbloqueada correctamente"}), 200
-    except Exception as e:
-        return jsonify({"error": f"Error al desbloquear IP: {str(e)}"}), 500
-
-if __name__ == "__main__":
-    # Crear archivos necesarios si no existen
-    if not os.path.exists(log_file):
-        with open(log_file, 'w') as f:
-            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - INFO - API iniciada\n")
-    
-    if not os.path.exists(blocked_ips_file):
-        with open(blocked_ips_file, 'w') as f:
-            pass
-    
-    print("API iniciada en http://0.0.0.0:5000/")
-    print("Logs disponibles en http://0.0.0.0:5000/logs")
-    
-    # Iniciar aplicación
-    app.run(host='0.0.0.0', debug=True)
-    
-    # Iniciar aplicación
-    app.run(host='0.0.0.0', debug=True)
+## Estructura del proyecto
