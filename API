@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template, redirect
 import os
 import subprocess
 import re
@@ -11,26 +11,116 @@ log_dir = "logs"
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
-# Archivo de log
+# Archivos de configuración
 log_file = os.path.join(log_dir, "api_logs.txt")
-
-# Lista de IPs bloqueadas
 blocked_ips_file = os.path.join(log_dir, "blocked_ips.txt")
+whitelist_file = os.path.join(log_dir, "whitelist.txt")
 
-# Lista de payloads SQLi básicos de PayloadsAllTheThings
-SQLI_PAYLOADS = [
-    "'", "--", ";", "/*", "*/", "OR 1=1", "' OR '1'='1", "\" OR \"1\"=\"1",
-    "OR 1=1--", "' OR 'x'='x", "UNION SELECT", "DROP TABLE", "INSERT INTO",
-    "DELETE FROM", "UPDATE ", "EXEC ", "SLEEP(", "WAITFOR DELAY", "SELECT *",
-    "admin'--", "' OR 1 -- -", "LIKE '%"
-]
+# Lista ampliada de payloads para múltiples vectores de ataque
+ATTACK_PAYLOADS = {
+    # Payloads SQLi originales (mantenidos)
+    "sqli": [
+        "'", "--", ";", "/*", "*/", "OR 1=1", "' OR '1'='1", "\" OR \"1\"=\"1",
+        "OR 1=1--", "' OR 'x'='x", "UNION SELECT", "DROP TABLE", "INSERT INTO",
+        "DELETE FROM", "UPDATE ", "EXEC ", "SLEEP(", "WAITFOR DELAY", "SELECT *",
+        "admin'--", "' OR 1 -- -", "LIKE '%",
+        "convert(", "cast(", "benchmark(", "substring(", "group_concat",
+        "load_file", "outfile", "dumpfile", "mid(", "=1", "1=1", "<>", "><",
+        "ORDER BY", "GROUP BY", "HAVING", "LIMIT", "PROCEDURE", "UNION ALL",
+        "extractvalue", "updatexml", "version(", "user()", "database()",
+        "concat(", "char(", "hex(", "unhex(", "ascii(", "@@version", "@@datadir",
+        "information_schema", "sysobjects", "sysusers", "sys.", "msf.", "dbo.",
+        "xp_cmdshell", "#", "-- ", "'--", "VARCHAR", "CONCAT", "CHAR(",
+        "+AND+", "+OR+", "AND 1=1", "AND 1=2", "AND 1=0", "IF(", "CASE WHEN",
+        "UNION ALL SELECT", "pg_sleep", "WAITFOR DELAY", "BENCHMARK",
+        "UTL_HTTP", "UTL_INADDR", "INTO OUTFILE", "INTO DUMPFILE"
+    ],
+    
+    # NUEVOS PAYLOADS - XSS (Cross-Site Scripting)
+    "xss": [
+        "<script>", "</script>", "<img src=x onerror=", "javascript:", "onload=", 
+        "onclick=", "onerror=", "onmouseover=", "onfocus=", "onblur=", 
+        "alert(", "String.fromCharCode(", "eval(", "document.cookie", 
+        "<svg onload=", "<iframe src=", "<img src=\"javascript:", 
+        "\"/><script>", "';alert(", "\"><script>", "\"autofocus onfocus=", 
+        "<body onload=", "<details open ontoggle=", "<A HREF=\"javascript:", 
+        "&#x", "%3C", "%3E", "<noscript><p title=\"", "><script>"
+    ],
+    
+    # NUEVOS PAYLOADS - Path Traversal y LFI
+    "path_traversal": [
+        "../", "..\\", "/../", "/..\\", "\\..\\",
+        "/etc/passwd", "C:\\Windows\\system.ini", "/proc/self/environ",
+        "file:///", "php://filter/", "php://input", "data://",
+        "/var/www/", "C:\\inetpub\\", "/WEB-INF/web.xml",
+        "....//", "..../\\", "%2e%2e%2f", "%252e%252e%252f",
+        "/windows/win.ini", "../../../../", "\\..\\..\\..\\",
+        "file://", "expect://", "zip://", "phar://"
+    ],
+    
+    # NUEVOS PAYLOADS - Command Injection
+    "cmd_injection": [
+        "| ", "& ", "; ", "&&", "||", "`", "$(",
+        "$(sleep", "& sleep", "; sleep", "| sleep",
+        "ping -c", "ping -n", "whoami", "net user",
+        "cat /etc/", "type C:\\", "wget", "curl",
+        "nc -e", "bash -i", "cmd.exe", "powershell",
+        "> /tmp/", "> C:\\temp\\", "2>&1", "/dev/tcp/",
+        "{{\"\".getClass().forName()", "Runtime.getRuntime().exec",
+        "Process", "python -c", "perl -e", "ruby -e"
+    ],
+    
+    # NUEVOS PAYLOADS - SSRF (Server-Side Request Forgery)
+    "ssrf": [
+        "http://localhost", "http://127.0.0.1", "http://[::1]",
+        "http://internal-service", "https://169.254.169.254/",
+        "http://metadata.google.internal/", "http://169.254.169.254/latest/meta-data/",
+        "file:///", "dict://", "gopher://", "ldap://", "tftp://",
+        "ftp://", "http://0177.0.0.1", "http://0x7f.0.0.1",
+        "http://127.1", "http://127.000.000.001", "http://2130706433"
+    ],
+    
+    # NUEVOS PAYLOADS - Inyección de Cabeceras HTTP
+    "header_injection": [
+        "Host:", "Content-Length:", "Transfer-Encoding: chunked",
+        "Content-Type: application/x-www-form-urlencoded",
+        "X-Forwarded-For:", "X-Remote-IP:", "X-Remote-Addr:",
+        "X-Originating-IP:", "X-Client-IP:", "CF-Connecting-IP:",
+        "True-Client-IP:", "Referer:", "User-Agent:", "Cookie:"
+    ],
+    
+    # NUEVOS PAYLOADS - Inyección NoSQL
+    "nosql_injection": [
+        "$where:", "$ne:", "$gt:", "$lt:", "$regex:", "$in:",
+        "{\"$gt\":", "{\"$ne\":", "{\"$regex\":", "{\"$where\":",
+        "true, $where:", "1, $where:", "$or:", "$and:",
+        "db.collection.find", "db.getCollectionNames",
+        "password", {"$exists":"true"}, "username", {"$regex": ".*"},
+        {"$where", "sleep(1000)"}, {"$where", "1 == 1"}
+    ]
+}
 
-# Estadísticas
+# Para compatibilidad con el código existente
+SQLI_PAYLOADS = ATTACK_PAYLOADS["sqli"]
+
+# IPs en whitelist (siempre permitidas)
+DEFAULT_WHITELIST = ['127.0.0.1', '0.0.0.0', 'localhost', '10.1.101.52']
+
+# Estadisticas
 stats = {
     'total_requests': 0,
     'blocked_requests': 0,
     'blocked_ips': 0,
-    'last_request': None
+    'last_request': None,
+    'attacks_by_type': {
+        'sqli': 0,
+        'xss': 0,
+        'path_traversal': 0,
+        'cmd_injection': 0,
+        'ssrf': 0,
+        'header_injection': 0,
+        'nosql_injection': 0
+    }
 }
 
 def write_log(message, is_blocked=False):
@@ -38,43 +128,196 @@ def write_log(message, is_blocked=False):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_type = "BLOQUEADO" if is_blocked else "INFO"
     log_entry = f"{timestamp} - {log_type} - {message}\n"
-    
+
     with open(log_file, "a") as f:
         f.write(log_entry)
 
-def detect_sqli(text):
-    """Detecta posibles inyecciones SQL basadas en PayloadsAllTheThings"""
-    if not text:
-        return False
+def detect_attack(text, full_request=None):
+    """Detecta posibles ataques con patrones ampliados"""
+    if not text or not isinstance(text, str):
+        return False, None
     
-    for payload in SQLI_PAYLOADS:
-        if payload.lower() in text.lower():
-            return True
+    #convertir text a minusculas una vez
+    text_lower = text.lower()
+    
+    attack_patterns = {
+        # Ataques de red
+        "network_scan": [
+            "nmap", "masscan", "zmap", "ping sweep", 
+            "port scanning", "network enumeration"
+        ],
+        
+        # Ataques de credenciales
+        "credential_attack": [
+            "password cracking", "brute force", "hydra", 
+            "medusa", "dictionary attack", "login bypass"
+        ],
+        
+        # Ataques de exfiltración
+        "data_exfiltration": [
+            "data leak", "sensitive info", "exfiltrate", 
+            "download sensitive", "extract database"
+        ],
+        
+        # Malware y payloads maliciosos
+        "malware_payload": [
+            "reverse shell", "meterpreter", "shellcode", 
+            "remote access tool", "persistence mechanism"
+        ],
+        
+        # Ataques de escalada de privilegios
+        "privilege_escalation": [
+            "sudo exploit", "kernel exploit", "root access", 
+            "elevation of privilege"
+        ]
+    }
+    
+    all_payloads = {**ATTACK_PAYLOADS, **attack_patterns}
+    # Verificar cada tipo de ataque
+    
+    for attack_type, patterns in all_payloads.items():
+        for pattern in patterns:
+            if isinstance(pattern, str):
+                if pattern.lower() in text_lower():
+                    return True, attack_type
+                
+        if full_request:
+            pass
+        return False, None
+
+    # Patrones regulares para detección más sofisticada
+    regex_patterns = {
+        "sqli": [
+            r"(\%27)|(\')|(--)|(\%23)|(#)",
+            r"((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))",
+            r"(union)[^\n]*(select)",
+            r"(exec)[^\n]*(xp_cmdshell)",
+            r"(load_file|benchmark|sleep)",
+        ],
+        "xss": [
+            r"<[^>]*script.*?>",
+            r"<[^>]*on\w+\s*=",
+            r"javascript\s*:",
+            r"(alert|confirm|prompt)\s*\(",
+            r"document\.(cookie|location|write)",
+        ],
+        "path_traversal": [
+            r"(\.\.\/){1,}",
+            r"(\.\.\\){1,}",
+            r"%2e%2e(%2f|%5c)",
+            r"(file|php|data|expect|zip|phar)\s*:",
+        ],
+        "cmd_injection": [
+            r";\s*\w+",
+            r"\|\s*\w+",
+            r"&&\s*\w+",
+            r"\$\([^)]*\)",
+            r"`[^`]*`",
+        ],
+        "ssrf": [
+            r"(https?|ftp|dict|ldap|gopher|tftp)://",
+            r"(localhost|127\.0\.0\.1|\[::1\])",
+            r"169\.254\.169\.254",
+        ],
+        "nosql_injection": [
+            r"\{\s*\$\w+\s*:",
+            r"\$\w+\s*:",
+            r"db\.\w+\.\w+\(",
+        ]
+    }
+    
+    for attack_type, patterns in regex_patterns.items():
+        for pattern in patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                return True, attack_type
+    
+    return False, None
+
+# Mantener la función detect_sqli para compatibilidad
+def detect_sqli(text):
+    """Detecta posibles inyecciones SQL con patrones ampliados (versión compatibilidad)"""
+    is_attack, attack_type = detect_attack(text)
+    return is_attack and attack_type == "sqli"
+
+def load_whitelist():
+    """Carga la lista de IPs permitidas desde el archivo whitelist.txt"""
+    whitelist = DEFAULT_WHITELIST.copy()
+    if os.path.exists(whitelist_file):
+        with open(whitelist_file, 'r') as f:
+            for line in f:
+                ip = line.strip()
+                if ip and ip not in whitelist:
+                    whitelist.append(ip)
+    return whitelist
+
+def add_to_whitelist(ip):
+    """Añade una IP a la whitelist"""
+    whitelist = load_whitelist()
+    if ip not in whitelist:
+        with open(whitelist_file, 'a') as f:
+            f.write(f"{ip}\n")
+        write_log(f"IP {ip} añadida a la whitelist")
+        return True
     return False
 
-def block_ip(ip):
-    """Bloquea una IP usando iptables"""
+def remove_from_whitelist(ip):
+    """Elimina una IP de la whitelist"""
+    if ip in DEFAULT_WHITELIST:
+        return False
+
+    whitelist = load_whitelist()
+    if ip in whitelist and ip not in DEFAULT_WHITELIST:
+        whitelist.remove(ip)
+        with open(whitelist_file, 'w') as f:
+            for whitelisted_ip in whitelist:
+                if whitelisted_ip not in DEFAULT_WHITELIST:
+                    f.write(f"{whitelisted_ip}\n")
+        write_log(f"IP {ip} eliminada de la whitelist")
+        return True
+    return False
+
+def is_ip_whitelisted(ip):
+    """Verifica si una IP está en la whitelist"""
+    whitelist = load_whitelist()
+    return ip in whitelist
+
+def block_ip_permanently(ip):
+    """Bloquea una IP permanentemente usando iptables"""
     try:
+        # No bloquear IPs en whitelist
+        if is_ip_whitelisted(ip):
+            write_log(f"Intento de bloqueo ignorado: IP {ip} está en whitelist")
+            return False
+
         # Verificar si la IP ya está bloqueada
         check_cmd = f"sudo iptables -L INPUT -v -n | grep {ip}"
         result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
-        
+
         if ip in result.stdout:
-            write_log(f"IP {ip} ya está bloqueada")
-            return
-        
-        # Bloquear la IP
+            write_log(f"IP {ip} ya está bloqueada permanentemente")
+            return True
+
+        # Bloquear la IP de forma permanente
         block_cmd = f"sudo iptables -A INPUT -s {ip} -j DROP"
         subprocess.run(block_cmd, shell=True, check=True)
-        
+
+        # Guardar reglas para que persistan tras reinicios (puede requerir configuración adicional en Kali)
+        try:
+            save_cmd = "sudo iptables-save > /etc/iptables/rules.v4"
+            subprocess.run(save_cmd, shell=True, check=True)
+        except Exception as e:
+            write_log(f"Aviso: No se pudieron guardar las reglas iptables permanentemente: {str(e)}")
+
         # Registrar la IP bloqueada
         with open(blocked_ips_file, "a") as f:
             f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {ip}\n")
-        
+
         stats['blocked_ips'] += 1
-        write_log(f"IP {ip} bloqueada con iptables")
+        write_log(f"IP {ip} bloqueada permanentemente con iptables")
+        return True
     except Exception as e:
         write_log(f"Error al bloquear IP {ip}: {str(e)}")
+        return False
 
 def get_blocked_ips():
     """Obtiene la lista de IPs bloqueadas"""
@@ -83,58 +326,163 @@ def get_blocked_ips():
             return f.readlines()
     return []
 
+def is_ip_blocked(ip):
+    """Verifica si una IP está bloqueada en iptables"""
+    try:
+        check_cmd = f"sudo iptables -L INPUT -v -n | grep {ip}"
+        result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
+        return ip in result.stdout
+    except Exception:
+        # En caso de error, verificar en el archivo de IPs bloqueadas
+        blocked_ips = get_blocked_ips()
+        for line in blocked_ips:
+            if ip in line:
+                return True
+        return False
+
+# Middleware para filtrar todas las solicitudes
+@app.before_request
+def check_all_requests():
+    """Filtro global para todas las solicitudes"""
+    # Ignorar solicitudes a rutas administrativas para evitar bloqueos accidentales
+    if request.path in ['/logs', '/whitelist', '/unblock']:
+        return None
+
+    client_ip = request.remote_addr
+
+    # Verificar si la IP está en whitelist
+    if is_ip_whitelisted(client_ip):
+        return None  # Permitir la solicitud
+
+    # Verificar si la IP ya está bloqueada
+    if is_ip_blocked(client_ip):
+        stats['blocked_requests'] += 1
+        write_log(f"Acceso bloqueado: IP {client_ip} en lista negra")
+        return jsonify({"error": "Acceso denegado - IP bloqueada"}), 403
+
+    # Verificar ruta completa para detectar ataques
+    path = request.path
+    is_attack, attack_type = detect_attack(path)
+    if is_attack:
+        stats['blocked_requests'] += 1
+        stats['attacks_by_type'][attack_type] += 1
+        write_log(f"Ataque {attack_type} detectado en ruta: '{path}' desde {client_ip}", True)
+        block_ip_permanently(client_ip)
+        return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
+    
+    # Verificar todos los parámetros de URL
+    for key, value in request.args.items():
+        is_attack, attack_type = detect_attack(value)
+        if is_attack:
+            stats['blocked_requests'] += 1
+            stats['attacks_by_type'][attack_type] += 1
+            write_log(f"Ataque {attack_type} detectado en parámetro URL '{key}': {value} desde {client_ip}", True)
+            block_ip_permanently(client_ip)
+            return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
+
+    # Verificar formularios o datos JSON
+    if request.is_json:
+        try:
+            data = request.get_json(silent=True)
+            if data:
+                # Verificar recursivamente todos los valores en el JSON
+                is_attack, attack_type, attack_value = check_json_for_attacks(data, client_ip)
+                if is_attack:
+                    stats['blocked_requests'] += 1
+                    stats['attacks_by_type'][attack_type] += 1
+                    write_log(f"Ataque {attack_type} detectado en JSON: {attack_value} desde {client_ip}", True)
+                    block_ip_permanently(client_ip)
+                    return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
+        except Exception as e:
+            write_log(f"Error al procesar JSON: {str(e)}")
+
+    # Verificar datos de formulario
+    if request.form:
+        for key, value in request.form.items():
+            is_attack, attack_type = detect_attack(value)
+            if is_attack:
+                stats['blocked_requests'] += 1
+                stats['attacks_by_type'][attack_type] += 1
+                write_log(f"Ataque {attack_type} detectado en formulario '{key}': {value} desde {client_ip}", True)
+                block_ip_permanently(client_ip)
+                return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
+
+    # Si pasa todas las verificaciones, permitir la solicitud
+    return None
+
+def check_json_for_attacks(data, client_ip):
+    """Verifica recursivamente valores en datos JSON para detectar ataques"""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if isinstance(value, (dict, list)):
+                is_attack, attack_type, attack_value = check_json_for_attacks(value, client_ip)
+                if is_attack:
+                    return True, attack_type, attack_value
+            elif isinstance(value, str):
+                is_attack, attack_type = detect_attack(value)
+                if is_attack:
+                    return True, attack_type, value
+    elif isinstance(data, list):
+        for item in data:
+            is_attack, attack_type, attack_value = check_json_for_attacks(item, client_ip)
+            if is_attack:
+                return True, attack_type, attack_value
+    return False, None, None
+
+# Mantener la compatibilidad con la función original
+def check_json_for_sqli(data, client_ip):
+    """Verifica recursivamente valores en datos JSON para detectar SQLi (compatibilidad)"""
+    is_attack, attack_type, _ = check_json_for_attacks(data, client_ip)
+    return is_attack and attack_type == "sqli"
+
 @app.route("/")
 def root():
     # Actualizar estadísticas
     stats['total_requests'] += 1
     stats['last_request'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
+
     # Registrar solicitud
     write_log(f"Acceso a ruta raíz desde {request.remote_addr}")
-    
-    return "Home"
+
+    # Ahora pasamos ATTACK_PAYLOADS en lugar de SQLI_PAYLOADS
+    return render_template("index.html",
+                        stats=stats,
+                        ATTACK_PAYLOADS=ATTACK_PAYLOADS)
 
 @app.route("/test/<param>")
 def test(param):
     # Actualizar estadísticas
     stats['total_requests'] += 1
     stats['last_request'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Comprobar inyección en param
-    if detect_sqli(param):
+
+    # Comprobar ataques en param (aunque el middleware global ya lo comprueba)
+    is_attack, attack_type = detect_attack(param)
+    if is_attack:
         stats['blocked_requests'] += 1
+        stats['attacks_by_type'][attack_type] += 1
         client_ip = request.remote_addr
-        write_log(f"Intento de SQLi bloqueado en param: '{param}' desde {client_ip}", True)
-        
-        # Bloquear IP
-        if client_ip != "127.0.0.1" and client_ip != "0.0.0.0":  # No bloquear localhost
-            block_ip(client_ip)
-        
-        return jsonify({"error": "Acceso bloqueado por posible intento de SQL injection"}), 403
-    # Si no hay inyección, procesar normalmente
+        write_log(f"Ataque {attack_type} bloqueado en param: '{param}' desde {client_ip}", True)
+
+        # Bloquear IP si no está en whitelist
+        if not is_ip_whitelisted(client_ip):
+            block_ip_permanently(client_ip)
+
+        return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
+
+    # Si no hay ataque, procesar normalmente
     write_log(f"Parámetro test: '{param}' desde {request.remote_addr}")
     return jsonify({"param": param}), 200
 
 @app.route("/query")
 def query_test():
+    # Las verificaciones se realizan en el middleware global
+    # Esta función solo procesa solicitudes legítimas
+
     # Actualizar estadísticas
     stats['total_requests'] += 1
     stats['last_request'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Comprobar inyección en parámetros de consulta
-    for key, value in request.args.items():
-        if detect_sqli(value):
-            stats['blocked_requests'] += 1
-            client_ip = request.remote_addr
-            write_log(f"Intento de SQLi bloqueado en query param '{key}': '{value}' desde {client_ip}", True)
-            
-            # Bloquear IP
-            if client_ip != "127.0.0.1" and client_ip != "0.0.0.0":  # No bloquear localhost
-                block_ip(client_ip)
-            
-            return jsonify({"error": "Acceso bloqueado por posible intento de SQL injection"}), 403
-    
-    # Si no hay inyección, procesar normalmente
+
+    # Procesar parámetros
     result = {key: value for key, value in request.args.items()}
     write_log(f"Consulta con parámetros: {result} desde {request.remote_addr}")
     return jsonify(result), 200
@@ -144,113 +492,181 @@ def view_logs():
     # Actualizar estadísticas
     stats['total_requests'] += 1
     stats['last_request'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # HTML para la interfaz web de logs
-    html_template = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>API Logs</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1 { color: #333; }
-            .container { max-width: 1200px; margin: 0 auto; }
-            .stats { background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-            .logs { background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-            .blocked-ips { background-color: #fff0f0; padding: 15px; border-radius: 5px; }
-            .log-entry { margin-bottom: 5px; font-family: monospace; }
-            .blocked { color: red; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>API Logs y Estadísticas</h1>
-            
-            <div class="stats">
-                <h2>Estadísticas</h2>
-                <p>Total de solicitudes: {{ stats.total_requests }}</p>
-                <p>Solicitudes bloqueadas: {{ stats.blocked_requests }}</p>
-                <p>IPs bloqueadas: {{ stats.blocked_ips }}</p>
-                <p>Última solicitud: {{ stats.last_request }}</p>
-            </div>
-            
-            <div class="blocked-ips">
-                <h2>IPs Bloqueadas</h2>
-                {% if blocked_ips %}
-                    {% for ip in blocked_ips %}
-                        <div class="log-entry">{{ ip }}</div>
-                    {% endfor %}
-                {% else %}
-                    <p>No hay IPs bloqueadas</p>
-                {% endif %}
-            </div>
-            
-            <div class="logs">
-                <h2>Últimos logs</h2>
-                {% for log in logs %}
-                    <div class="log-entry {% if 'BLOQUEADO' in log %}blocked{% endif %}">
-                        {{ log }}
-                    </div>
-                {% endfor %}
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    
+
     # Leer logs existentes
     logs = []
     if os.path.exists(log_file):
         with open(log_file, 'r') as f:
             logs = f.readlines()
-            logs = logs[-20:] if len(logs) > 20 else logs  # Mostrar últimos 20 logs
-    
+            logs = logs[-50:] if len(logs) > 50 else logs  # Mostrar últimos 50 logs
+
     # Obtener IPs bloqueadas
     blocked_ips = get_blocked_ips()
-    
+
+    # Obtener whitelist
+    whitelist = load_whitelist()
+
     write_log(f"Vista de logs accedida desde {request.remote_addr}")
-    
+
     # Renderizar plantilla
-    return render_template_string(html_template, stats=stats, logs=logs, blocked_ips=blocked_ips)
+    return render_template("logs.html",
+                           stats=stats,
+                           logs=logs,
+                           blocked_ips=blocked_ips,
+                           whitelist=whitelist,
+                           default_whitelist=DEFAULT_WHITELIST,
+                           attack_types=list(ATTACK_PAYLOADS.keys()))
 
 @app.route("/unblock/<ip>")
 def unblock_ip(ip):
-    """Endpoint para desbloquear una IP específica (solo con fines administrativos)"""
+    """Endpoint para desbloquear una IP bloqueada"""
     try:
         # Desbloquear la IP
         unblock_cmd = f"sudo iptables -D INPUT -s {ip} -j DROP"
         subprocess.run(unblock_cmd, shell=True, check=True)
-        
+
         write_log(f"IP {ip} desbloqueada por {request.remote_addr}")
-        
+
         # Actualizar archivo de IPs bloqueadas
         if os.path.exists(blocked_ips_file):
             with open(blocked_ips_file, "r") as f:
                 lines = f.readlines()
-            
+
             with open(blocked_ips_file, "w") as f:
                 for line in lines:
                     if ip not in line:
                         f.write(line)
-        
+
         stats['blocked_ips'] -= 1
-        
-        return jsonify({"success": f"IP {ip} desbloqueada correctamente"}), 200
+
+        # Redirigir a la página de logs
+        return redirect('/logs')
     except Exception as e:
         return jsonify({"error": f"Error al desbloquear IP: {str(e)}"}), 500
 
+@app.route("/whitelist")
+def whitelist_management():
+    """Página de gestión de la whitelist"""
+    # Actualizar estadísticas
+    stats['total_requests'] += 1
+    stats['last_request'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Obtener whitelist
+    whitelist = load_whitelist()
+
+    write_log(f"Vista de gestión de whitelist accedida desde {request.remote_addr}")
+
+    # Renderizar plantilla
+    return render_template("whitelist.html",
+                          whitelist=whitelist,
+                          default_whitelist=DEFAULT_WHITELIST)
+
+@app.route("/whitelist/add", methods=["POST"])
+def add_ip_to_whitelist():
+    """Añade una IP a la whitelist"""
+    ip = request.form.get("ip", "").strip()
+
+    if not ip:
+        return jsonify({"error": "IP no proporcionada"}), 400
+
+    # Validar formato de IP básico
+    ip_pattern = r"^(\d{1,3}\.){3}\d{1,3}$"
+    if not re.match(ip_pattern, ip):
+        return jsonify({"error": "Formato de IP inválido"}), 400
+
+    result = add_to_whitelist(ip)
+
+    if result:
+        write_log(f"IP {ip} añadida a whitelist por {request.remote_addr}")
+        # Desbloquear la IP si estaba bloqueada
+        if is_ip_blocked(ip):
+            try:
+                unblock_cmd = f"sudo iptables -D INPUT -s {ip} -j DROP"
+                subprocess.run(unblock_cmd, shell=True, check=True)
+                write_log(f"IP {ip} desbloqueada automáticamente al añadirla a whitelist")
+            except Exception as e:
+                write_log(f"Error al desbloquear IP {ip}: {str(e)}")
+
+    # Redirigir a la página de whitelist
+    return redirect('/whitelist')
+
+@app.route("/whitelist/remove/<ip>")
+def remove_ip_from_whitelist(ip):
+    """Elimina una IP de la whitelist"""
+    result = remove_from_whitelist(ip)
+
+    if result:
+        write_log(f"IP {ip} eliminada de whitelist por {request.remote_addr}")
+    else:
+        write_log(f"No se pudo eliminar IP {ip} de whitelist (IP predeterminada o no encontrada)")
+
+    # Redirigir a la página de whitelist
+    return redirect('/whitelist')
+
+@app.route('/<path:undefined_path>')
+def catch_all(undefined_path):
+    """Captura todas las rutas no definidas y verifica ataques en ellas"""
+    # La verificacion general ya debe haber ocurrido en el middleware,
+    # pero podemos añadir una capa extra de verificacion
+    is_attack, attack_type = detect_attack(undefined_path)
+    if is_attack:
+        stats['blocked_requests'] += 1
+        stats['attacks_by_type'][attack_type] += 1
+        client_ip = request.remote_addr
+        write_log(f"Ataque {attack_type} detectado en ruta indefinida: '{undefined_path}' desde {client_ip}", True)
+
+        #Bloquear IP si no esta en whitelist
+        if not is_ip_whitelisted(client_ip):
+            block_ip_permanently(client_ip)
+        return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
+
+    # Si no hay ataque, pero la ruta no existe
+    return jsonify({"error": "Ruta no encontrada"}), 404
+
 if __name__ == "__main__":
+    # Crear directorio de logs si no existe
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
     # Crear archivos necesarios si no existen
     if not os.path.exists(log_file):
         with open(log_file, 'w') as f:
-            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - INFO - API iniciada\n")
-    
+            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - INFO - WebGuardian iniciado\n")
+
     if not os.path.exists(blocked_ips_file):
         with open(blocked_ips_file, 'w') as f:
             pass
-    
-    print("API iniciada en http://0.0.0.0:5000/")
-    print("Logs disponibles en http://0.0.0.0:5000/logs")
-    
+
+    if not os.path.exists(whitelist_file):
+        with open(whitelist_file, 'w') as f:
+            for ip in DEFAULT_WHITELIST:
+                if ip not in ['127.0.0.1', '0.0.0.0', 'localhost']:
+                    f.write(f"{ip}\n")
+
+    # Inicializar estadísticas de IPs bloqueadas
+    blocked_ips = get_blocked_ips()
+    stats['blocked_ips'] = len(blocked_ips)
+
+    print("=================================================")
+    print("  WebGuardian: Sistema de Protección Web Avanzado  ")
+    print("=================================================")
+    print(f"- API iniciada en http://0.0.0.0:5000/")
+    print(f"- Panel de control: http://0.0.0.0:5000/logs")
+    print(f"- Gestión de whitelist: http://0.0.0.0:5000/whitelist")
+    print(f"- Detección de {sum(len(payloads) for payloads in ATTACK_PAYLOADS.values())} patrones de ataque")
+    print(f"- {len(load_whitelist())} IPs en whitelist")
+    print("- Vectores de ataque protegidos:")
+    for attack_type, payloads in ATTACK_PAYLOADS.items():
+        print(f"  * {attack_type}: {len(payloads)} patrones")
+    print("=================================================")
+
+    # Crear carpeta de templates si no existe
+    if not os.path.exists("templates"):
+        os.makedirs("templates")
+
+    # Crear carpeta de static si no existe
+    if not os.path.exists("static"):
+        os.makedirs("static")
+
     # Iniciar aplicación
     app.run(host='0.0.0.0', debug=True)
