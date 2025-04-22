@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebGuardian - Logs</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body { padding-top: 20px; }
+        .header { margin-bottom: 30px; text-align: center; }
+        .card { margin-bottom: 20px; }
+        pre { max-height: 400px; overflow-y: auto; }
+        .blocked { color: red; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>WebGuardian - Logs</h1>
+            <p class="lead">Sistema de Protección Web Avanzado</p>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">Enlaces de navegación</div>
+                    <div class="card-body">
+                        <a href="/" class="btn btn-secondary">Inicio</a>
+                        <a href="/whitelist" class="btn btn-success">Gestionar whitelist</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">IPs bloqueadas</div>
+                    <div class="card-body">
+                        {% if blocked_ips %}
+                            <ul>
+                                {% for ip_info in blocked_ips %}
+                                    <li>
+                                        {{ ip_info }}
+                                        <a href="/unblock/{{ ip_info.split(' - ')[1].strip() if ' - ' in ip_info else ip_info.strip() }}" class="btn btn-sm btn-warning">Desbloquear</a>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p>No hay IPs bloqueadas actualmente.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">Últimos logs</div>
+                    <div class="card-body">
+                        <pre>{% for log in logs %}{{ log }}{% endfor %}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
