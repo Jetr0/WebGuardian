@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebGuardian - Sistema de Protección Web</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body { padding-top: 20px; }
+        .header { margin-bottom: 30px; text-align: center; }
+        .card { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>WebGuardian</h1>
+            <p class="lead">Sistema de Protección Web Avanzado</p>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">Estadísticas</div>
+                    <div class="card-body">
+                        <p>Total solicitudes: <strong>{{ stats.total_requests }}</strong></p>
+                        <p>Solicitudes bloqueadas: <strong>{{ stats.blocked_requests }}</strong></p>
+                        <p>IPs bloqueadas: <strong>{{ stats.blocked_ips }}</strong></p>
+                        <p>Última solicitud: <strong>{{ stats.last_request }}</strong></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">Ataques por tipo</div>
+                    <div class="card-body">
+                        <ul>
+                            {% for attack_type, count in stats.attacks_by_type.items() %}
+                                <li>{{ attack_type }}: <strong>{{ count }}</strong></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">Enlaces de administración</div>
+                    <div class="card-body">
+                        <a href="/logs" class="btn btn-info">Ver logs</a>
+                        <a href="/whitelist" class="btn btn-success">Gestionar whitelist</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
