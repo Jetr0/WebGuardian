@@ -15,8 +15,8 @@ import logging
 from datetime import datetime
 
 # Configuración
-API_URL = "http://localhost/api/blocked_ips"  # URL de la API que devuelve IPs bloqueadas
-LOG_FILE = "/var/log/ip_sync.log"
+API_URL = "http://localhost:5000/api/blocked_ips"  # URL de la API que devuelve IPs bloqueadas
+LOG_FILE = "/var/log/webguardian/ip_sync.log"
 BLOCKED_IPS_FILE = "/etc/webguardian/blocked_ips.txt"
 
 # Configurar logging
@@ -140,7 +140,7 @@ def sync_blocked_ips():
     for ip in ips_to_unblock:
         unblock_ip(ip)
     
-    # Guardar los cambios
+    # Guardar cambios
     if ips_to_block or ips_to_unblock:
         save_iptables()
         save_blocked_ips(api_blocked_ips)

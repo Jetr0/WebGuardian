@@ -579,101 +579,6 @@ def start_apache_monitor():
     monitor_thread = threading.Thread(target=monitor_apache_logs, daemon=True)
     monitor_thread.start()
 
-# Middleware para filtrar todas las solicitudes
-@app.before_request
-def check_all_requests():
-    """Filtro global para todas las solicitudes"""
-    # Ignorar solicitudes a rutas administrativas para evitar bloqueos accidentales
-    if request.path in ['/logs', '/whitelist', '/unblock']:
-        return None
-
-    client_ip = request.remote_addr
-
-    # Verificar si la IP está en whitelist
-    if is_ip_whitelisted(client_ip):
-        return None  # Permitir la solicitud
-
-    # Verificar si la IP ya está bloqueada
-    if is_ip_blocked(client_ip):
-        stats['blocked_requests'] += 1
-        write_log(f"Acceso bloqueado: IP {client_ip} en lista negra")
-        return jsonify({"error": "Acceso denegado - IP bloqueada"}), 403
-
-    # Verificar ruta completa para detectar ataques
-    path = request.path
-    is_attack, attack_type = detect_attack(path)
-    if is_attack:
-        stats['blocked_requests'] += 1
-        stats['attacks_by_type'][attack_type] += 1
-        write_log(f"Ataque {attack_type} detectado en ruta: '{path}' desde {client_ip}", True)
-        block_ip_permanently(client_ip)
-        return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
-    
-    # Verificar todos los parámetros de URL
-    for key, value in request.args.items():
-        is_attack, attack_type = detect_attack(value)
-        if is_attack:
-            stats['blocked_requests'] += 1
-            stats['attacks_by_type'][attack_type] += 1
-            write_log(f"Ataque {attack_type} detectado en parámetro URL '{key}': {value} desde {client_ip}", True)
-            block_ip_permanently(client_ip)
-            return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
-
-    # Verificar formularios o datos JSON
-    if request.is_json:
-        try:
-            data = request.get_json(silent=True)
-            if data:
-                # Verificar recursivamente todos los valores en el JSON
-                is_attack, attack_type, attack_value = check_json_for_attacks(data, client_ip)
-                if is_attack:
-                    stats['blocked_requests'] += 1
-                    stats['attacks_by_type'][attack_type] += 1
-                    write_log(f"Ataque {attack_type} detectado en JSON: {attack_value} desde {client_ip}", True)
-                    block_ip_permanently(client_ip)
-                    return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
-        except Exception as e:
-            write_log(f"Error al procesar JSON: {str(e)}")
-
-    # Verificar datos de formulario
-    if request.form:
-        for key, value in request.form.items():
-            is_attack, attack_type = detect_attack(value)
-            if is_attack:
-                stats['blocked_requests'] += 1
-                stats['attacks_by_type'][attack_type] += 1
-                write_log(f"Ataque {attack_type} detectado en formulario '{key}': {value} desde {client_ip}", True)
-                block_ip_permanently(client_ip)
-                return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
-
-    # Si pasa todas las verificaciones, permitir la solicitud
-    return None
-
-def check_json_for_attacks(data, client_ip):
-    """Verifica recursivamente valores en datos JSON para detectar ataques"""
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if isinstance(value, (dict, list)):
-                is_attack, attack_type, attack_value = check_json_for_attacks(value, client_ip)
-                if is_attack:
-                    return True, attack_type, attack_value
-            elif isinstance(value, str):
-                is_attack, attack_type = detect_attack(value)
-                if is_attack:
-                    return True, attack_type, value
-    elif isinstance(data, list):
-        for item in data:
-            is_attack, attack_type, attack_value = check_json_for_attacks(item, client_ip)
-            if is_attack:
-                return True, attack_type, attack_value
-    return False, None, None
-
-# Mantener la compatibilidad con la función original
-def check_json_for_sqli(data, client_ip):
-    """Verifica recursivamente valores en datos JSON para detectar SQLi (compatibilidad)"""
-    is_attack, attack_type, _ = check_json_for_attacks(data, client_ip)
-    return is_attack and attack_type == "sqli"
-
 @app.route("/")
 def root():
     # Actualizar estadísticas
@@ -842,67 +747,104 @@ def remove_ip_from_whitelist(ip):
     # Redirigir a la página de whitelist
     return redirect('/whitelist')
 
-@app.route('/<path:undefined_path>')
-def catch_all(undefined_path):
-    """Captura todas las rutas no definidas y verifica ataques en ellas"""
-    # La verificacion general ya debe haber ocurrido en el middleware,
-    # pero podemos añadir una capa extra de verificacion
-    is_attack, attack_type = detect_attack(undefined_path)
+@app.route("/api/blocked_ips")
+def api_blocked_ips():
+    """API endpoint para obtener IPs bloqueadas en formato JSON"""
+    blocked_ips_list = []
+    
+    # Obtener IPs desde el archivo
+    if os.path.exists(blocked_ips_file):
+        with open(blocked_ips_file, "r") as f:
+            for line in f:
+                # Extraer solo la IP de cada línea
+                ip_match = re.search(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', line)
+                if ip_match:
+                    blocked_ips_list.append(ip_match.group(1))
+    
+    # También obtener IPs directamente de iptables para estar seguros
+    try:
+        check_cmd = "sudo iptables -L INPUT -n | grep DROP"
+        result = subprocess.run(check_cmd, shell=True, capture_output=True, text=True)
+        
+        # Extraer IPs con expresión regular
+        ip_pattern = r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
+        iptables_ips = re.findall(ip_pattern, result.stdout)
+        
+        # Añadir IPs que no estén ya en la lista
+        for ip in iptables_ips:
+            if ip not in blocked_ips_list:
+                blocked_ips_list.append(ip)
+    except Exception as e:
+        write_log(f"Error al obtener IPs bloqueadas de iptables: {str(e)}")
+    
+    return jsonify(blocked_ips_list)
+
+# Middleware para filtrar todas las solicitudes
+@app.before_request
+def check_all_requests():
+    """Filtro global para todas las solicitudes"""
+    # Ignorar solicitudes a rutas administrativas para evitar bloqueos accidentales
+    if request.path in ['/logs', '/whitelist', '/unblock']:
+        return None
+
+    client_ip = request.remote_addr
+
+    # Verificar si la IP está en whitelist
+    if is_ip_whitelisted(client_ip):
+        return None  # Permitir la solicitud
+
+    # Verificar si la IP ya está bloqueada
+    if is_ip_blocked(client_ip):
+        stats['blocked_requests'] += 1
+        write_log(f"Acceso bloqueado: IP {client_ip} en lista negra")
+        return jsonify({"error": "Acceso denegado - IP bloqueada"}), 403
+
+    # Verificar ruta completa para detectar ataques
+    path = request.path
+    is_attack, attack_type = detect_attack(path)
     if is_attack:
         stats['blocked_requests'] += 1
         stats['attacks_by_type'][attack_type] += 1
-        client_ip = request.remote_addr
-        write_log(f"Ataque {attack_type} detectado en ruta indefinida: '{undefined_path}' desde {client_ip}", True)
-
-        #Bloquear IP si no esta en whitelist
-        if not is_ip_whitelisted(client_ip):
-            block_ip_permanently(client_ip)
+        write_log(f"Ataque {attack_type} detectado en ruta: '{path}' desde {client_ip}", True)
+        block_ip_permanently(client_ip)
         return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
+    
+    # Verificar todos los parámetros de URL
+    for key, value in request.args.items():
+        is_attack, attack_type = detect_attack(value)
+        if is_attack:
+            stats['blocked_requests'] += 1
+            stats['attacks_by_type'][attack_type] += 1
+            write_log(f"Ataque {attack_type} detectado en parámetro URL '{key}': {value} desde {client_ip}", True)
+            block_ip_permanently(client_ip)
+            return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
 
-    # Si no hay ataque, pero la ruta no existe
-    return jsonify({"error": "Ruta no encontrada"}), 404
+    # Verificar formularios o datos JSON
+    if request.is_json:
+        try:
+            data = request.get_json(silent=True)
+            if data:
+                # Verificar recursivamente todos los valores en el JSON
+                is_attack, attack_type, attack_value = check_json_for_attacks(data, client_ip)
+                if is_attack:
+                    stats['blocked_requests'] += 1
+                    stats['attacks_by_type'][attack_type] += 1
+                    write_log(f"Ataque {attack_type} detectado en JSON: {attack_value} desde {client_ip}", True)
+                    block_ip_permanently(client_ip)
+                    return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
+        except Exception as e:
+            write_log(f"Error al procesar JSON: {str(e)}")
 
-if __name__ == "__main__":
-    # Crear directorio de logs si no existe
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    # Verificar datos de formulario
+    if request.form:
+        for key, value in request.form.items():
+            is_attack, attack_type = detect_attack(value)
+            if is_attack:
+                stats['blocked_requests'] += 1
+                stats['attacks_by_type'][attack_type] += 1
+                write_log(f"Ataque {attack_type} detectado en formulario '{key}': {value} desde {client_ip}", True)
+                block_ip_permanently(client_ip)
+                return jsonify({"error": f"Acceso bloqueado por posible ataque de tipo {attack_type}"}), 403
 
-    # Crear archivos necesarios si no existen
-    if not os.path.exists(log_file):
-        with open(log_file, 'w') as f:
-            f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - INFO - WebGuardian iniciado\n")
-
-    if not os.path.exists(blocked_ips_file):
-        with open(blocked_ips_file, 'w') as f:
-            pass
-
-    if not os.path.exists(whitelist_file):
-        with open(whitelist_file, 'w') as f:
-            for ip in DEFAULT_WHITELIST:
-                if ip not in ['127.0.0.1', '0.0.0.0', 'localhost']:
-                    f.write(f"{ip}\n")
-
-    # Inicializar estadísticas de IPs bloqueadas
-    blocked_ips = get_blocked_ips()
-    stats['blocked_ips'] = len(blocked_ips)
-
-    # Iniciar el monitoreo de logs de Apache
-    start_apache_monitor()
-
-    print("=================================================")
-    print("  WebGuardian: Sistema de Protección Web Avanzado  ")
-    print("=================================================")
-    print(f"- API iniciada en http://0.0.0.0:5000/")
-    print(f"- Panel de control: http://0.0.0.0:5000/logs")
-    print(f"- Gestión de whitelist: http://0.0.0.0:5000/whitelist")
-    print(f"- Detección de {sum(len(payloads) for payloads in ATTACK_PAYLOADS.values())} patrones de ataque")
-    print(f"- {len(load_whitelist())} IPs en whitelist")
-    print(f"- Monitoreo de logs de Apache: ACTIVO")
-    print("- Vectores de ataque protegidos:")
-    for attack_type, payloads in ATTACK_PAYLOADS.items():
-        print(f"  * {attack_type}: {len(payloads)} patrones")
-    print("=================================================")
-
-    # Iniciar aplicación
-    app.run(host='0.0.0.0', debug=True)
-                
+    # Si pasa todas las verificaciones, permitir la solicitud
+    return None
