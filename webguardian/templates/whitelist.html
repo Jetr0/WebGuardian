@@ -6,17 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
-    <style>
-        body { padding-top: 20px; }
-        .header { margin-bottom: 30px; text-align: center; }
-        .card { margin-bottom: 20px; }
-        .default-ip { background-color: #f8f9fa; }
-        .ip-badge { font-size: 1em; padding: 5px 10px; margin-right: 10px; }
-        .add-ip-form { background-color: #f8f9fa; padding: 20px; border-radius: 5px; }
-        .whitelist-container { max-height: 500px; overflow-y: auto; }
-        .info-box { background-color: #e9f7fe; border-left: 4px solid #3498db; padding: 15px; margin-bottom: 20px; }
-        .warning-badge { background-color: #ffebee; color: #f44336; }
-    </style>
+    
 </head>
 <body>
     <div class="container">
@@ -165,6 +155,7 @@
                                     <i class="fas fa-upload"></i> Importar whitelist
                                 </label>
                                 <input type="file" id="importFile" style="display: none;">
+<small class="text-muted">* Requiere implementación backend</small>
                             </div>
                         </div>
                     </div>
@@ -174,108 +165,5 @@
     </div>
 
     <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
-    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-    <script>
-        $(document).ready(function() {
-            // Toggle "Otro motivo" field
-            $('#reason').change(function() {
-                if ($(this).val() === 'other') {
-                    $('#otherReasonGroup').show();
-                } else {
-                    $('#otherReasonGroup').hide();
-                }
-            });
-
-            // Validate IP format
-            $('#addIpForm').submit(function(e) {
-                const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-                const ip = $('#ip').val();
-                
-                if (!ipPattern.test(ip)) {
-                    e.preventDefault();
-                    alert('Por favor, introduce una dirección IP válida en formato xxx.xxx.xxx.xxx');
-                    return false;
-                }
-                
-                // Additional validation for each octet
-                const octets = ip.split('.');
-                for (let i = 0; i < octets.length; i++) {
-                    const octet = parseInt(octets[i]);
-                    if (octet < 0 || octet > 255) {
-                        e.preventDefault();
-                        alert('Cada número en la dirección IP debe estar entre 0 y 255');
-                        return false;
-                    }
-                }
-                
-                return true;
-            });
-
-            // Check IP status (example functionality)
-            $('#btnCheckIp').click(function() {
-                const ip = $('#checkIp').val();
-                const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-                
-                if (!ipPattern.test(ip)) {
-                    alert('Por favor, introduce una dirección IP válida');
-                    return;
-                }
-                
-                // This would normally call an API endpoint to check the status
-                // For this example, we'll simulate a check against whitelist
-                let isInWhitelist = false;
-                {% for whitelisted_ip in whitelist %}
-                    if ('{{ whitelisted_ip }}' === ip) {
-                        isInWhitelist = true;
-                    }
-                {% endfor %}
-                
-                $('#ipStatus').show();
-                if (isInWhitelist) {
-                    $('#ipStatus').html('<div class="alert alert-success"><i class="fas fa-check-circle"></i> La IP está en la whitelist</div>');
-                } else {
-                    $('#ipStatus').html('<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> La IP NO está en la whitelist</div>');
-                }
-            });
-            });
-
-            // Export whitelist
-            $('#btnExport').click(function() {
-                // Create CSV content
-                let csvContent = "IP,Status\n";
-                {% for ip in whitelist %}
-                    csvContent += '{{ ip }},{% if ip in default_whitelist %}Default{% else %}Custom{% endif %}\n';
-                {% endfor %}
-                
-                // Create and trigger download
-                const blob = new Blob([csvContent], { type: 'text/csv' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.setAttribute('hidden', '');
-                a.setAttribute('href', url);
-                a.setAttribute('download', 'webguardian_whitelist.csv');
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            });
-
-            // Import whitelist (would require backend implementation)
-            $('#importFile').change(function() {
-                alert('Función de importación: Esta característica requeriría implementación en el backend para procesar el archivo CSV y actualizar la whitelist.');
-            });
-        });
-    </script>
-</body>
-</html>
-            });
-
-            // Import whitelist (would require backend implementation)
-            $('#importFile').change(function() {
-                alert('Función de importación: Esta característica requeriría implementación en el backend para procesar el archivo CSV y actualizar la whitelist.');
-            });
-        });
-    </script>
 </body>
 </html>

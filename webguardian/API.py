@@ -579,6 +579,28 @@ def start_apache_monitor():
     monitor_thread = threading.Thread(target=monitor_apache_logs, daemon=True)
     monitor_thread.start()
 
+def check_json_for_attacks(data, client_ip):
+    """
+    Recorre el JSON recursivamente para detectar ataques.
+    """
+    for key, value in walk_json(data):
+        is_attack, attack_type = detect_attack(str(value))
+        if is_attack:
+            return True, attack_type, value
+    return False, None, None
+
+def walk_json(obj):
+    """
+    Generador para recorrer un JSON arbitrario.
+    """
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from walk_json(v)
+    elif isinstance(obj, list):
+        for item in obj:
+            yield from walk_json(item)
+    else:
+        yield None, obj
 @app.route("/")
 def root():
     # Actualizar estadísticas
