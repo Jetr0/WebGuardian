@@ -20,16 +20,9 @@ Este repositorio contiene:
 ## 📚 Índice de Contenido
 
 1. [Requisitos del Sistema](#requisitos-del-sistema)
-2. [Instalación](#instalación)
-3. [Estructura del Proyecto](#estructura-del-proyecto)
-4. [Configuración de Apache](#configuración-de-apache)
-5. [Permisos del Sistema](#permisos-del-sistema)
-6. [Sincronización con iptables](#sincronización-con-iptables)
-7. [Interfaz Web](#interfaz-web)
-8. [Solución de Problemas](#solución-de-problemas)
-9. [Prácticas Recomendadas de Seguridad](#prácticas-recomendadas-de-seguridad)
-10. [Desinstalación](#desinstalación)
-11. [Soporte](#soporte)
+2. [Instalación Completa Paso a Paso](#instalación-completa-paso-a-paso)
+3. [Desinstalación](#desinstalación)
+4. [Soporte](#soporte)
 
 ---
 
@@ -42,30 +35,29 @@ Este repositorio contiene:
 
 ---
 
-## Instalación
+## Instalación Completa Paso a Paso
 
-### 1. Preparación del sistema
+### 1. Actualización del sistema
 
 ```bash
 sudo apt update && sudo apt upgrade -y
 ```
 
-### 2. Instalar dependencias necesarias
+### 2. Instalación de paquetes necesarios
 
 ```bash
-sudo apt install apache2 libapache2-mod-wsgi-py3 python3-pip python3-venv -y
+sudo apt install apache2 libapache2-mod-wsgi-py3 python3-pip python3-venv git -y
 ```
 
 ### 3. Clonar el proyecto
 
 ```bash
-sudo mkdir -p /var/www
-cd /var/www
+cd /var/www/
 sudo git clone https://github.com/Jetr0/WebGuardian.git webguardian
 sudo chown -R $USER:$USER /var/www/webguardian
 ```
 
-### 4. Crear entorno virtual e instalar requisitos
+### 4. Crear entorno virtual e instalar dependencias
 
 ```bash
 cd /var/www/webguardian
@@ -74,149 +66,145 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 5. Estructura de directorios y archivos estáticos
+### 5. Crear estructura de carpetas adicional
 
 ```bash
-mkdir -p logs static/css
+mkdir -p logs static/css templates
 cp assets/css/style.css static/css/
 ```
 
-### 6. Configurar permisos y servicios
+### 6. Crear archivo WSGI
 
 ```bash
-sudo bash scripts/setup_permissions.sh
+nano /var/www/webguardian/webguardian.wsgi
 ```
 
-Esto:
+Contenido:
 
-* Asigna permisos correctos
-* Configura sudoers para `www-data`
-* Instala el script de sincronización
-* Habilita persistencia de reglas iptables
+```python
+#!/usr/bin/env python3
+import sys
+import logging
 
-### 7. Configurar Apache
+logging.basicConfig(stream=sys.stderr)
+sys.path.insert(0, '/var/www/webguardian/')
+
+from app import app as application
+```
+
+### 7. Crear archivo de configuración de Apache
 
 ```bash
-sudo cp config/webguardian.conf /etc/apache2/sites-available/
+sudo nano /etc/apache2/sites-available/webguardian.conf
+```
+
+Contenido:
+
+```apacheconf
+<VirtualHost *:80>
+    ServerName webguardian.local
+    ServerAdmin webmaster@localhost
+
+    WSGIDaemonProcess webguardian user=www-data group=www-data threads=5
+    WSGIScriptAlias / /var/www/webguardian/webguardian.wsgi
+
+    <Directory /var/www/webguardian>
+        WSGIProcessGroup webguardian
+        WSGIApplicationGroup %{GLOBAL}
+        Require all granted
+    </Directory>
+
+    Alias /static /var/www/webguardian/static
+    <Directory /var/www/webguardian/static>
+        Require all granted
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/webguardian-error.log
+    CustomLog ${APACHE_LOG_DIR}/webguardian-access.log combined
+</VirtualHost>
+```
+
+### 8. Habilitar sitio en Apache
+
+```bash
 sudo a2ensite webguardian.conf
+sudo a2dissite 000-default.conf
 sudo systemctl reload apache2
 ```
 
-### 8. Configurar servicio systemd
+### 9. Crear script de permisos y configuraciones automatizadas
 
 ```bash
-sudo cp config/webguardian.service /etc/systemd/system/
+nano /var/www/webguardian/scripts/setup_permissions.sh
+```
+
+(Pega contenido desde el script real del repositorio)
+
+Dar permisos y ejecutarlo:
+
+```bash
+chmod +x scripts/setup_permissions.sh
+sudo bash scripts/setup_permissions.sh
+```
+
+### 10. Crear servicio systemd para Apache con WebGuardian (opcional)
+
+```bash
+sudo nano /etc/systemd/system/webguardian.service
+```
+
+Contenido:
+
+```ini
+[Unit]
+Description=Servicio Apache WebGuardian
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/webguardian
+ExecStart=/usr/sbin/apache2ctl -D FOREGROUND
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Activar e iniciar el servicio:
+
+```bash
 sudo systemctl daemon-reload
 sudo systemctl enable webguardian.service
 sudo systemctl start webguardian.service
 ```
 
----
+### 11. Configurar sincronización de IPs bloqueadas
 
-## Estructura del Proyecto
-
-```
-webguardian/
-├── app.py                # Aplicación principal
-├── API.py                # API RESTful y monitoreo de Apache
-├── templates/            # HTML de interfaz
-├── static/css/           # Estilos
-├── logs/                 # Registros de actividad
-├── scripts/              # Scripts como sync_blocked_ips.py
-├── config/               # Configuraciones de Apache y systemd
-```
-
----
-
-## Configuración de Apache
-
-Archivo principal: `config/webguardian.conf`
-
-Contiene la configuración de WSGI y alias para estáticos. Asegúrate de que:
-
-* El archivo `webguardian.wsgi` esté en `/var/www/webguardian/`
-* La aplicación Flask exporte `app as application`
-
----
-
-## Permisos del Sistema
-
-Configurados por `scripts/setup_permissions.sh`. Incluye:
-
-* Propietario `www-data` en todo `/var/www/webguardian`
-* Permisos 755/775 en carpetas necesarias
-* Acceso a logs de Apache
-* Permiso para usar iptables sin contraseña
-
----
-
-## Sincronización con iptables
-
-El script `sync_blocked_ips.py` sincroniza las IPs bloqueadas vía API con las reglas locales.
-
-* Se instala automáticamente en `/usr/local/bin/`
-* Ejecutado cada 5 minutos por `cron`
-* Alternativamente puedes usar `systemd`
-
-Ver detalles en el mismo script.
-
----
-
-## Interfaz Web
-
-Disponible en:
-
-```
-http://localhost/
-```
-
-Permite:
-
-* Ver estadísticas en tiempo real
-* Ver y filtrar logs
-* Gestionar IPs bloqueadas
-* Gestionar whitelist
-
----
-
-## Solución de Problemas
-
-### ❌ Error con iptables (permission denied)
-
-Verifica sudoers:
+Asegúrate de tener el archivo `sync_blocked_ips.py` en:
 
 ```bash
-sudo cat /etc/sudoers.d/webguardian
+/usr/local/bin/sync_blocked_ips.py
 ```
 
-### ❌ No aparecen logs
-
-Revisar:
+Si no existe:
 
 ```bash
-tail -f /var/www/webguardian/logs/api_logs.txt
+sudo cp scripts/sync_blocked_ips.py /usr/local/bin/
+sudo chmod +x /usr/local/bin/sync_blocked_ips.py
 ```
 
-### ❌ Error al iniciar servicio
+Programar ejecución con cron:
 
 ```bash
-sudo journalctl -u webguardian.service
+(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/python3 /usr/local/bin/sync_blocked_ips.py") | crontab -
 ```
 
 ---
 
-## Prácticas Recomendadas de Seguridad
-
-* Actualiza regularmente dependencias y reglas de detección
-* Monitorea logs de forma activa
-* Usa WebGuardian como parte de una arquitectura defensiva más amplia (HTTPS, IDS, etc.)
-* Limita el uso de whitelist solo a IPs necesarias
-
----
-
-## Desinstalación
-
+## 
 Si necesitas eliminar WebGuardian completamente de tu sistema, sigue estos pasos:
+
 
 ```bash
 # Detener y deshabilitar el servicio
@@ -227,17 +215,16 @@ sudo systemctl disable webguardian.service
 sudo a2dissite webguardian.conf
 sudo systemctl reload apache2
 
-# Borrar archivos
+# Borrar archivos del proyecto
 sudo rm -rf /var/www/webguardian
 sudo rm /etc/apache2/sites-available/webguardian.conf
 sudo rm /etc/systemd/system/webguardian.service
 sudo rm /etc/sudoers.d/webguardian
+sudo rm /usr/local/bin/sync_blocked_ips.py
 
-# (Opcional) Limpiar reglas iptables si deseas
+# (Opcional) Eliminar reglas iptables
 # sudo iptables -F
 ```
-
-> Asegúrate de revisar cada comando antes de ejecutarlo en entornos de producción.
 
 ---
 
