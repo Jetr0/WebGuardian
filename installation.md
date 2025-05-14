@@ -1,36 +1,8 @@
-# Guía de Instalación – WebGuardian 2025 (Arquitectura Static + API)
+# WebGuardian 2025 — Guía de Instalación (Static + API)
 
-> **Objetivo**: desplegar WebGuardian en un servidor Linux con **Apache (80)** sirviendo únicamente contenido estático –principalmente un pequeño *index.html* con Javascript– y la **API Flask (5000)** ejecutándose de forma independiente. De este modo evitamos ejecutar una segunda instancia de la API dentro de Apache y simplificamos la pila.
-
----
-
-## Índice
-
-1. Requisitos previos
-2. Estructura de la solución
-3. Instalación paso a paso
-      3.1 Actualizar el sistema
-      3.2 Instalar dependencias
-      3.3 Clonar el repositorio
-      3.4 Preparar el front‑end estático (80)
-      3.5 Desplegar la API Flask (5000)
-      3.6 Permisos de iptables y sincronización
-4. Pruebas rápidas
-5. Desinstalación
-6. FAQ & Solución de problemas
-
----
-
-## 1 · Requisitos previos
-
-* **Debian 12 / Kali 2024.x** (o derivado).
-* **Python 3.10+**
-* **Apache 2.4+** (solo módulo core; *no* se necesita `mod_wsgi`).
-* Privilegios **sudo/root** para configurar iptables y systemd.
-
----
-
-## 2 · Estructura de la solución
+> **Arquitectura final**  
+> **Apache :80** ⇒ solo ficheros estáticos (HTML + CSS + JS)  
+> **Flask API :5000** ⇒ lógica de WAF, bloqueo de IPs, estadísticas
 
 ```text
 ┌──────── Browser ────────┐      ➊ HTTP 80 (estático)
@@ -62,14 +34,16 @@ sudo apt update && sudo apt upgrade -y
 ### 3.2 Instalar dependencias mínimas
 
 ```bash
-# Servidor web y utilidades
-sudo apt install apache2 python3-venv python3-pip iptables-persistent -y
+sudo mkdir -p /opt/webguardian
+sudo chown $USER /opt/webguardian
+cd /opt/webguardian
+git clone https://github.com/tu-usuario/webguardian.git .
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt     # incluye flask, flask-cors, psutil, etc.
 ```
 
-*No instalamos* `libapache2-mod-wsgi-py3` porque ya no lo necesitamos.
-
-### 3.3 Clonar el repositorio
-
+### 3.2 Copia el front‑end estático a Apache
 ```bash
 sudo mkdir -p /opt && cd /opt
 sudo git clone https://github.com/Jetr0/WebGuardian.git webguardian
@@ -136,80 +110,103 @@ python3 API\ \(1\).py --port 5000   # CTRL‑C para salir
 #### Sistema `systemd`
 
 ```ini
+# /etc/systemd/system/webguardian-api.service
 [Unit]
-Description=WebGuardian Flask API
+Description=WebGuardian Flask API (port 5000)
 After=network.target
 
 [Service]
 User=www-data
+Group=www-data
 WorkingDirectory=/opt/webguardian
 Environment="PATH=/opt/webguardian/venv/bin"
-ExecStart=/opt/webguardian/venv/bin/gunicorn -b 0.0.0.0:5000 'API (1):app'
+ExecStart=/opt/webguardian/venv/bin/python api.py
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 ```
-
+Habilita y arranca:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now webguardian-api
 ```
 
-> **Nota**: ya no existe ningún `webguardian.wsgi` ni líneas `from app import app as application`.
-
-### 3.6 Permisos de iptables y sincronización
-
-Ejecuta el script incluido:
-
+### 3.5 Permisos y reglas iptables
+Ejecuta el helper:
 ```bash
-sudo bash /opt/webguardian/setup_permisions.sh
+sudo bash setup_permissions.sh   # añade sudoers para iptables, persiste reglas, etc.
 ```
 
-Esto añadirá a `www-data` los permisos sudo para `iptables`, creará los directorios de logs y programará `sync_blocked_ips.py` cada 5 minutos.
+### 3.6 Sincronizador de IPs bloqueadas
+Instálalo como **timer** systemd (recomendado):
+`/etc/systemd/system/webguardian-sync.service`
+```ini
+[Unit]
+Description=Sync blocked IPs with iptables
+After=network.target
 
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/webguardian
+ExecStart=/opt/webguardian/venv/bin/python sync_blocked_ips.py
+```
+`/etc/systemd/system/webguardian-sync.timer`
+```ini
+[Unit]
+Description=Run WebGuardian sync every 5 min
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+```
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now webguardian-sync.timer
+```
 ---
 
-## 4 · Pruebas rápidas
+## 4. Comprobaciones rápidas
+
+1. **Apache**: `curl -I http://localhost/` → `200 OK` (debe devolver `index.html`).
+2. **API**: `curl http://localhost:5000/api/stats` → JSON con estadísticas.
+3. **CORS**: abre el navegador en `http://<host>/` y comprueba consola JS (sin errores `CORS`/`net::ERR`).
+4. **Bloqueo de prueba**:
+   ```bash
+   curl http://localhost:5000/api/block/1.2.3.4
+   sudo iptables -L -n | grep 1.2.3.4   # debería aparecer en la cadena DROP
+   ```
+5. **sync_blocked_ips**: `sudo systemctl status webguardian-sync.timer` y `...sync.service`.
+
+---
+## 5. Actualización del sistema
 
 ```bash
-# 1) Visita http://TU-SERVIDOR/  (estático)
-# 2) Haz clic o espera la redirección y verifica http://TU-SERVIDOR:5000/
-# 3) Lanza una prueba XSS:
-curl "http://TU-SERVIDOR:5000/test/<script>alert(1)</script>"
-# 4) Comprueba iptables:
-sudo iptables -L INPUT -n | grep DROP
+cd /opt/webguardian
+sudo systemctl stop webguardian-api
+source venv/bin/activate
+git pull
+pip install -r requirements.txt
+sudo systemctl start webguardian-api
 ```
 
 ---
+## 6. Troubleshooting
 
-## 5 · Desinstalación
-
-```bash
-# Detener servicios
-a2dissite webguardian-static.conf && systemctl reload apache2
-systemctl disable --now webguardian-api.service && rm /etc/systemd/system/webguardian-api.service
-
-# Borrar archivos (opcional)
-rm -rf /opt/webguardian /var/www/webguardian/static_site
-rm /etc/apache2/sites-available/webguardian-static.conf
-rm /etc/sudoers.d/webguardian
-iptables -F  # revisa antes de ejecutar
-```
+| Síntoma | Pista |
+|---------|-------|
+| `502 Bad Gateway` en navegador | La API no escucha; revisa `systemctl status webguardian-api`. |
+| Logs JS vacíos | Verifica ruta `/api/logs` en el navegador, confirma permisos de lectura sobre los ficheros de log. |
+| IP no se bloquea | Comprueba que `www-data` tiene permisos sudo para `iptables` sin contraseña (`/etc/sudoers.d/webguardian`). |
 
 ---
+## 7. Próximos pasos
 
-## 6 · FAQ & Solución de problemas
+* Habilita HTTPS con Let’s Encrypt (certbot) y redirige 80 → 443.
+* Activa geo‑blocking o rate‑limiting en la API.
+* Añade autenticación (token/JWT) para endpoints críticos como `block`/`unblock`.
 
-**P: Apache sigue mostrando la página de Debian.**
-R: Asegúrate de haber deshabilitado `000-default.conf` y habilitado tu vhost.
-
-**P: No puedo acceder a `:5000` externamente.**
-R: Verifica que el cortafuegos (ufw/iptables) permita el puerto o usa Nginx/Apache como *reverse‑proxy* si prefieres no exponerlo.
-
-**P: `sync_blocked_ips.py` lanza *Permission denied*.**
-R: Confirma que `www-data` tiene entrada en `/etc/sudoers.d/webguardian`.
-
----
-
-© 2025 WebGuardian · Licencia MIT
+¡Listo! WebGuardian está operativo en modo **Apache estático + Flask API**.

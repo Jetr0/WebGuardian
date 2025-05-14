@@ -1,112 +1,51 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-    <title>WebGuardian - Sistema de Protección Web</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-        body { padding-top: 20px; }
-        .header { margin-bottom: 30px; text-align: center; }
-        .card { margin-bottom: 20px; }
-    </style>
+  <meta charset="utf-8">
+  <title>WebGuardian – Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <div class="row mt-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header bg-danger text-white">
-                        <i class="fas fa-chart-bar"></i> Gráfico de tipos de ataque
-                    </div>
-                    <div class="card-body">
-                        <canvas id="attackChart" height="100"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="header">
-            <h1>WebGuardian</h1>
-            <p class="lead">Sistema de Protección Web Avanzado</p>
-        </div>
+  <div class="container py-4">
 
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">Estadísticas</div>
-                    <div class="card-body">
-                        <p>Total solicitudes: <strong>{{ stats.total_requests }}</strong></p>
-                        <p>Solicitudes bloqueadas: <strong>{{ stats.blocked_requests }}</strong></p>
-                        <p>IPs bloqueadas: <strong>{{ stats.blocked_ips }}</strong></p>
-                        <p>Última solicitud: <strong>{{ stats.last_request }}</strong></p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">Ataques por tipo</div>
-                    <div class="card-body">
-                        <ul>
-                            {% for attack_type, count in stats.attacks_by_type.items() %}
-                                <li>{{ attack_type }}: <strong>{{ count }}</strong></li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <header class="text-center mb-4">
+      <h1 class="display-4 text-danger">Web<span class="text-dark">Guardian</span></h1>
+      <p class="lead">WAF auto-gestionado – estadísticas en tiempo real</p>
+      <a href="logs.html" class="btn btn-outline-info mr-2">Ver logs</a>
+      <a href="whitelist.html" class="btn btn-outline-success">Gestionar whitelist</a>
+    </header>
 
-        <div class="row">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header">Enlaces de administración</div>
-                    <div class="card-body">
-                        <a href="/logs" class="btn btn-info">Ver logs</a>
-                        <a href="/whitelist" class="btn btn-success">Gestionar whitelist</a>
-                    </div>
-                </div>
-            </div>
+    <section class="row">
+      <div class="col-md-6 mb-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-header bg-danger text-white">
+            <i class="fas fa-chart-bar"></i> Ataques por tipo
+          </div>
+          <div class="card-body">
+            <canvas id="attackChart" height="160"></canvas>
+          </div>
         </div>
-    </div>
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script>
-        const attackStats = {{ stats.attacks_by_type | tojson | safe }};
-        const attackTypes = Object.keys(attackStats);
-        const attackCounts = Object.values(attackStats);
+      </div>
 
-        const ctx = document.getElementById('attackChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: attackTypes,
-                datasets: [{
-                    label: 'Número de ataques',
-                    data: attackCounts,
-                    backgroundColor: 'rgba(220, 53, 69, 0.5)',
-                    borderColor: 'rgba(220, 53, 69, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { display: false },
-                    title: {
-                        display: true,
-                        text: 'Distribución de tipos de ataque detectados'
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    </script>
+      <div class="col-md-6 mb-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-header bg-dark text-white">
+            <i class="fas fa-tachometer-alt"></i> Resumen
+          </div>
+          <ul class="list-group list-group-flush" id="statsList">
+            <!-- JS inyectará <li> aquí -->
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>
