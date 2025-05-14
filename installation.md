@@ -136,7 +136,6 @@ python3 API\ \(1\).py --port 5000   # CTRL‑C para salir
 #### Sistema `systemd`
 
 ```ini
-# /etc/systemd/system/webguardian-api.service
 [Unit]
 Description=WebGuardian Flask API
 After=network.target
