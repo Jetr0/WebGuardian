@@ -1,5 +1,0 @@
-body { background:#f7f9fb; }
-.card-header { font-weight:600; }
-.log-container { max-height:480px; overflow-y:auto; font-family:monospace; }
-.log-entry { border-bottom:1px solid #e3e6ea; padding:2px 0; }
-.list-group-item .btn-sm { padding:.125rem .5rem; }
