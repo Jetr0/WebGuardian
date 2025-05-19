@@ -55,7 +55,6 @@ header h1 {
     text-decoration: none;
 }
 
-
 .back-link:hover {
     text-decoration: underline;
 }
@@ -426,3 +425,4 @@ footer {
         gap: 10px;
     }
 }
+

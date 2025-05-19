@@ -1,1 +1,40 @@
-<html><body><h1>Whitelist WebGuardian</h1></body></html>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Gestión de IPs - WebGuardian</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>Gestión de IPs WebGuardian</h1>
+
+  <h2>Whitelist actual</h2>
+  <ul>
+    {% for ip in whitelist %}
+      <li>{{ ip }}</li>
+    {% endfor %}
+  </ul>
+
+  <h3>Añadir IP a la whitelist</h3>
+  <form method="post" action="/add_whitelist">
+    <input type="text" name="ip" placeholder="IP a permitir" required>
+    <button type="submit">Añadir a whitelist</button>
+  </form>
+
+  <hr>
+
+  <h2>IPs bloqueadas</h2>
+  <ul>
+    {% for ip_line in blocked_ips %}
+      <li>{{ ip_line }}</li>
+    {% endfor %}
+  </ul>
+
+  <h3>Bloquear manualmente una IP</h3>
+  <form method="post" action="/block_ip">
+    <input type="text" name="ip" placeholder="IP a bloquear" required>
+    <button type="submit">Bloquear IP</button>
+  </form>
+
+  <br><a href="/logs">← Ver logs</a>
+</body>
+</html>
