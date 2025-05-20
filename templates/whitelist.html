@@ -1,40 +1,49 @@
+
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Gestión de IPs - WebGuardian</title>
-  <link rel="stylesheet" href="/static/style.css">
+    <title>SQLi-Shield - Whitelist</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
-  <h1>Gestión de IPs WebGuardian</h1>
+    <div class="container">
+        <div class="header">
+            <h1>Gesti  n de Whitelist</h1>
+            <a href="/logs">Volver a logs</a>
+        </div>
 
-  <h2>Whitelist actual</h2>
-  <ul>
-    {% for ip in whitelist %}
-      <li>{{ ip }}</li>
-    {% endfor %}
-  </ul>
+        <div class="panel">
+            <h2>A  adir IP a la whitelist</h2>
+            <form action="/whitelist/add" method="post">
+                <div class="form-group">
+                    <label for="ip">Direcci  n IP:</label>
+                    <input type="text" id="ip" name="ip" placeholder="Ej: 192.168.1.100" required>
+                </div>
+                <button type="submit" class="button primary">A  adir a whitelist</button>
+            </form>
+        </div>
 
-  <h3>Añadir IP a la whitelist</h3>
-  <form method="post" action="/add_whitelist">
-    <input type="text" name="ip" placeholder="IP a permitir" required>
-    <button type="submit">Añadir a whitelist</button>
-  </form>
+        <div class="panel">
+            <h2>IPs en whitelist</h2>
+            <p>Las siguientes IPs est  n exentas de bloqueo:</p>
 
-  <hr>
-
-  <h2>IPs bloqueadas</h2>
-  <ul>
-    {% for ip_line in blocked_ips %}
-      <li>{{ ip_line }}</li>
-    {% endfor %}
-  </ul>
-
-  <h3>Bloquear manualmente una IP</h3>
-  <form method="post" action="/block_ip">
-    <input type="text" name="ip" placeholder="IP a bloquear" required>
-    <button type="submit">Bloquear IP</button>
-  </form>
-
-  <br><a href="/logs">← Ver logs</a>
+            <div class="whitelist-items">
+                {% for ip in whitelist %}
+                    <div class="ip-item">
+                        {% if ip in default_whitelist %}
+                            <span class="default">{{ ip }} (predeterminado)</span>
+                        {% else %}
+                            <span>{{ ip }}</span>
+                            <a href="/whitelist/remove/{{ ip }}" class="unblock-button">Eliminar</a>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <footer>
+        <p>SQLi-Shield | Desarrollado para protecci  n contra ataques de inyecci  n SQL</p>
+    </footer>
 </body>
 </html>

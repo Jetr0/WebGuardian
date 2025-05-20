@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SQLi-Shield</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SQLi-Shield: Protecci  n contra Inyecciones SQL</h1>
+            <p class="subtitle">Sistema de seguridad para detecci  n y bloqueo de ataques SQLi</p>
+        </header>
+
+        <div class="status-card">
+            <div class="status-indicator active"></div>
+            <p>El sistema de protecci  n est   funcionando correctamente</p>
+        </div>
+
+        <div class="info-section">
+            <h2>Informaci  n del sistema</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <h3>Patrones detectados</h3>
+                    <p>{{ SQLI_PAYLOADS|length }} patrones de SQLi</p>
+                </div>
+                <div class="info-item">
+                    <h3>Solicitudes totales</h3>
+                    <p>{{ stats.total_requests }}</p>
+                </div>
+                <div class="info-item">
+                    <h3>Intentos bloqueados</h3>
+                    <p>{{ stats.blocked_requests }}</p>
+                </div>
+                <div class="info-item">
+                    <h3>IPs bloqueadas</h3>
+                    <p>{{ stats.blocked_ips }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <a href="/logs" class="button primary">Ver logs y estad  sticas</a>
+            <a href="/whitelist" class="button secondary">Gestionar whitelist</a>
+            <a href="/test/test123" class="button secondary">Probar detecci  n</a>
+        </div>
+
+        <div class="documentation">
+            <h2>C  mo funciona</h2>
+            <p>SQLi-Shield act  a como un sistema de protecci  n contra ataques de inyecci  n SQL. Analiza todas las>
+
+            <h3>Caracter  sticas principales</h3>
+            <ul>
+                <li>Detecci  n de patrones SQLi con base en PayloadsAllTheThings</li>
+                <li>Bloqueo autom  tico de IPs maliciosas usando iptables</li>
+                <li>Sistema de whitelist para IPs confiables</li>
+                <li>Sistema de logs detallado para auditor  a</li>
+                <li>Panel de control en tiempo real</li>
+            </ul>
+
+            <h3>Comprobaciones r  pidas</h3>
+            <ul>
+                <li>Cualquier URL sin patrones SQLi ser   procesada normalmente</li>
+                <li>Intente acceder con un patr  n SQLi: <a href="/test/admin%27--">/test/admin'--</a> (ser   bloque>
+                <li>Acceda al <a href="/logs">panel de logs</a> para ver la actividad</li>
+            </ul>
+        </div>
+    </div>
+    <footer>
+        <p>SQLi-Shield | Desarrollado para protecci  n contra ataques de inyecci  n SQL</p>
+    </footer>
+</body>
+</html>
+
