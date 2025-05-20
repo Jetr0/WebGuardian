@@ -4,6 +4,18 @@
 
 ---
 
+## 🚀 Clonación del proyecto desde GitHub
+
+```bash
+cd /var/www/html/
+sudo git clone https://github.com/Jetr0/WebGuardian.git webguardian
+cd webguardian
+```
+
+> Reemplaza `tuusuario` por tu usuario real de GitHub si es distinto.
+
+---
+
 ## 📂 Estructura del proyecto
 
 ```
@@ -11,15 +23,15 @@
 ├── apache_site/
 │   ├── index.html
 │   └── style.css
-├── app.py                      # API Flask que detecta SQLi y gestiona logs, whitelist y bloqueo
-├── check_sqli.lua              # Hook Lua que intercepta peticiones Apache
+├── app.py
+├── check_sqli.lua
 ├── logs/
 │   ├── api_logs.txt
 │   ├── blocked_ips.txt
 │   └── whitelist.txt
 ├── scripts/
-│   ├── sync_blocked_ips.py     # Sincronizador opcional con iptables
-│   └── restart_apache_loop.sh  # Bucle para reiniciar Apache cada 5 segundos (opcional)
+│   ├── sync_blocked_ips.py
+│   └── restart_apache_loop.sh
 ├── static/
 │   └── style.css
 └── templates/
@@ -48,13 +60,12 @@ sudo apt update
 sudo apt install apache2 libapache2-mod-lua python3-pip iptables-persistent lua-socket -y
 pip3 install flask requests
 
-# 2. Crear estructura del proyecto (si no existe aún)
-sudo mkdir -p /var/www/html/webguardian
-cd /var/www/html/webguardian
+# 2. Clonar el proyecto
+cd /var/www/html/
+sudo git clone https://github.com/Jetr0/WebGuardian.git webguardian
+cd webguardian
 
-# 3. Copiar o clonar los archivos del proyecto aquí
-
-# 4. Configurar Apache
+# 3. Configurar Apache
 sudo tee /etc/apache2/sites-available/webguardian.conf > /dev/null <<EOF
 <VirtualHost *:80>
     ServerName localhost
@@ -74,7 +85,7 @@ sudo a2enmod lua
 sudo a2ensite webguardian
 sudo systemctl reload apache2
 
-# 5. Crear servicio systemd para la API Flask
+# 4. Crear servicio systemd para la API Flask
 sudo tee /etc/systemd/system/webguardian.service > /dev/null <<EOF
 [Unit]
 Description=WebGuardian WAF API
