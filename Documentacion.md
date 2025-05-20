@@ -31,12 +31,15 @@
 - IPs maliciosas se bloquean mediante:
   ```bash
   sudo iptables -A INPUT -s <IP> -j DROP
+  ```
+- Whitelist protege IPs como `127.0.0.1`, `0.0.0.0`, `localhost`.
+- Soporte para `iptables-persistent` para mantener reglas tras reinicio.
 
-Whitelist protege IPs como 127.0.0.1, 0.0.0.0, localhost.
+---
 
-Soporte para iptables-persistent para mantener reglas tras reinicio.
+## 📁 Estructura del proyecto
 
-📁 Estructura del proyecto
+```
 webguardian/
 ├── app.py
 ├── check_sqli.lua
@@ -57,66 +60,67 @@ webguardian/
 │   ├── sync_blocked_ips.py
 │   └── restart_apache_loop.sh
 └── README.md
+```
 
-🔐 Flujo de funcionamiento
-Cliente accede a Apache (puerto 80).
+---
 
-Apache ejecuta check_sqli.lua.
+## 🔐 Flujo de funcionamiento
 
-Lua llama a la API local (Flask) en puerto 5000.
+1. Cliente accede a Apache (`puerto 80`).
+2. Apache ejecuta `check_sqli.lua`.
+3. Lua llama a la API local (Flask) en `puerto 5000`.
+4. La API analiza la URI y decide si bloquear:
+   - Detecta patrones SQLi.
+   - Aplica lógica de whitelist.
+   - Escribe logs.
+   - Bloquea IP con `iptables` si es necesario.
+5. Apache sirve o deniega la petición según la respuesta.
 
-La API analiza la URI y decide si bloquear:
+---
 
-Detecta patrones SQLi.
+## 🛡️ Funcionalidad WAF
 
-Aplica lógica de whitelist.
+### ✔️ Detección de SQLi
+- Uso de payloads reales de *PayloadsAllTheThings*.
+- Coincidencias exactas y expresiones regulares.
 
-Escribe logs.
+### ✔️ Whitelist
+- IPs internas o confiables no se bloquean nunca.
+- Gestión desde `/whitelist`.
 
-Bloquea IP con iptables si es necesario.
+### ✔️ Logs
+- Logs detallados en `logs/api_logs.txt`.
+- Últimos intentos se visualizan en `/logs`.
 
-Apache sirve o deniega la petición según la respuesta.
+### ✔️ Bloqueo manual
+- Desde `/logs` puedes añadir una IP manualmente a iptables.
+- También desbloquearla con un clic.
 
-🛡️ Funcionalidad WAF
-✔️ Detección de SQLi
-Uso de payloads reales de PayloadsAllTheThings.
+---
 
-Coincidencias exactas y expresiones regulares.
+## 🌐 Panel de administración (solo localhost)
 
-✔️ Whitelist
-IPs internas o confiables no se bloquean nunca.
+- `/` — Panel de estado
+- `/logs` — Ver intentos, IPs bloqueadas, y añadir/bloquear manualmente
+- `/whitelist` — Gestionar IPs exentas de bloqueo
 
-Gestión desde /whitelist.
+---
 
-✔️ Logs
-Logs detallados en logs/api_logs.txt.
+## 🛠️ Scripts adicionales
 
-Últimos intentos se visualizan en /logs.
+### 🔁 `sync_blocked_ips.py`
+- Sincroniza reglas iptables con el archivo `blocked_ips.txt`.
+- Útil si reinicias sin `iptables-persistent`.
 
-✔️ Bloqueo manual
-Desde /logs puedes añadir una IP manualmente a iptables.
+### 🔁 `restart_apache_loop.sh`
+- Reinicia Apache cada 5 segundos (modo debug/pruebas).
+- Puede activarse en crontab con `@reboot`.
 
-También desbloquearla con un clic.
+---
 
-🌐 Panel de administración (solo localhost)
-/ — Panel de estado
+## 🧪 Comprobación del sistema
 
-/logs — Ver intentos, IPs bloqueadas, y añadir/bloquear manualmente
-
-/whitelist — Gestionar IPs exentas de bloqueo
-
-🛠️ Scripts adicionales
-🔁 sync_blocked_ips.py
-Sincroniza reglas iptables con el archivo blocked_ips.txt.
-
-Útil si reinicias sin iptables-persistent.
-
-🔁 restart_apache_loop.sh
-Reinicia Apache cada 5 segundos (modo debug/pruebas).
-
-Puede activarse en crontab con @reboot.
-
-🧪 Comprobación del sistema
+```bash
 # Apache
 sudo systemctl status apache2
 
@@ -128,19 +132,29 @@ ss -tuln | grep :5000
 
 # Últimos 50 logs
 tail -n 50 /var/www/html/webguardian/logs/api_logs.txt
+```
 
-🧼 Desbloquear IPs
+---
+
+## 🧼 Desbloquear IPs
+
+```bash
 # Desde la interfaz web: /logs
 # O manualmente:
 sudo iptables -D INPUT -s <IP> -j DROP
+```
 
-✏️ Notas adicionales
-El sistema está pensado para ser accesible solo desde localhost en el backend.
+---
 
-Apache es el único intermediario entre el exterior y la validación Lua+Flask.
+## ✏️ Notas adicionales
 
-Se pueden añadir mejoras como backoff exponencial, geo-blocking, etc.
+- El sistema está pensado para ser accesible **solo desde localhost** en el backend.
+- Apache es el único intermediario entre el exterior y la validación Lua+Flask.
+- Se pueden añadir mejoras como backoff exponencial, geo-blocking, etc.
 
-📦 Autor
-Desarrollado por Pau Rico
+---
+
+## 📦 Autor
+
+Desarrollado por **Pau Rico**  
 © 2025 — Proyecto WebGuardian
