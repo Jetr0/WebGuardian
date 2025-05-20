@@ -1,151 +1,146 @@
-# 🛡️ WebGuardian - Documentación Técnica de Herramientas
+# 📚 Documentación Técnica - WebGuardian
 
-Esta documentación describe todas las herramientas que intervienen en el funcionamiento del proyecto **WebGuardian**, incluyendo la API, el servidor Apache, redirecciones, detección de ataques y el control mediante IPtables.
-
----
-
-## 🔧 Herramientas y tecnologías utilizadas
-
-### 1. **Flask (Python 3)**
-- Framework web usado para construir la API.
-- Proporciona rutas `/check`, `/logs`, `/whitelist`, `/api/blocked_ips`.
-- Se encarga de detectar SQLi, bloquear IPs, gestionar la whitelist y mostrar logs.
-
-**Ruta:** `/var/www/html/webguardian/app.py`
-
-**Comando para ejecutar manualmente:**
-```bash
-python3 app.py
-```
+**WebGuardian** es un WAF (Web Application Firewall) casero que protege aplicaciones web Apache contra ataques por inyección SQL (SQLi). Utiliza una API local en Flask, un hook Lua con `mod_lua`, y reglas `iptables` para bloquear IPs maliciosas en tiempo real.
 
 ---
 
-### 2. **iptables**
-- Sistema de filtrado de paquetes del kernel de Linux.
-- Se usa para aplicar bloqueos de red en tiempo real a IPs detectadas como maliciosas por la API.
+## 🧩 Componentes del sistema
 
-**Ejemplo de bloqueo:**
-```bash
-sudo iptables -A INPUT -s <IP> -j DROP
-```
+### 🔹 Apache2
+- Sirve contenido estático desde `apache_site/`.
+- Utiliza `mod_lua` para enganchar un script Lua antes de servir cualquier petición.
+- Este script consulta la API local y decide si permitir o bloquear.
 
-**Visualizar reglas activas:**
-```bash
-sudo iptables -L INPUT -n --line-numbers
-```
+### 🔹 Lua + mod_lua
+- Script `check_sqli.lua` intercepta todas las peticiones web externas.
+- Extrae URI + IP del cliente.
+- Llama a la API: `http://127.0.0.1:5000/check?uri=...&ip=...`.
+- Si la API responde 403 → Apache deniega el acceso.
 
----
+### 🔹 Flask (API)
+- Corre en `127.0.0.1:5000`.
+- Rutas principales:
+  - `/check`: analiza una URI y decide si bloquear.
+  - `/logs`: interfaz web para ver actividad, bloquear/desbloquear IPs.
+  - `/whitelist`: gestión de IPs exentas de bloqueo.
+  - `/unblock/<ip>`: elimina una IP bloqueada.
+  - `/block_ip_manual`: bloquea una IP desde formulario.
+  - `/api/blocked_ips`: devuelve IPs bloqueadas en formato JSON.
 
-### 3. **Apache2**
-- Servidor web que sirve una página estática (`apache_site`) al exterior (puerto 80).
-- Usa `mod_lua` para interceptar peticiones y redirigirlas internamente a la API antes de decidir si servir o rechazar.
+### 🔹 iptables
+- IPs maliciosas se bloquean mediante:
+  ```bash
+  sudo iptables -A INPUT -s <IP> -j DROP
 
-**Archivo de configuración:**
-```
-/etc/apache2/sites-available/webguardian.conf
-```
+Whitelist protege IPs como 127.0.0.1, 0.0.0.0, localhost.
 
-**Activación del sitio:**
-```bash
-sudo a2ensite webguardian
-sudo systemctl reload apache2
-```
+Soporte para iptables-persistent para mantener reglas tras reinicio.
 
----
-
-### 4. **mod_lua**
-- Módulo de Apache que permite enganchar scripts en Lua en el flujo de procesamiento.
-- Utilizado en conjunto con `LuaHookAccessChecker` para inspeccionar las peticiones mediante `check_sqli.lua`.
-
-**Instalación:**
-```bash
-sudo apt install libapache2-mod-lua
-sudo a2enmod lua
-```
-
-**Hook definido en webguardian.conf:**
-```apache
-LuaHookAccessChecker /var/www/html/webguardian/check_sqli.lua access_check
-```
-
----
-
-### 5. **Lua + LuaSocket**
-- Lenguaje ligero embebido en Apache.
-- Utilizado para escribir el hook `access_check()` que consulta la API antes de permitir la petición.
-- `socket.http` y `ltn12` permiten enviar peticiones HTTP desde Lua.
-
-**Instalación:**
-```bash
-sudo apt install lua5.4 lua-socket
-```
-
-**Script:**
-```
-/var/www/html/webguardian/check_sqli.lua
-```
-
----
-
-## 🧩 Estructura del proyecto
-
-```
-/var/www/html/webguardian/
-├── app.py                     # API en Flask
-├── check_sqli.lua             # Hook de Apache (mod_lua)
-├── apache_site/               # Página HTML servida por Apache
+📁 Estructura del proyecto
+webguardian/
+├── app.py
+├── check_sqli.lua
+├── apache_site/
 │   ├── index.html
 │   └── style.css
-├── static/                    # CSS compartido
-│   └── style.css
-├── templates/                 # HTML renderizado desde Flask
+├── templates/
 │   ├── index.html
 │   ├── logs.html
 │   └── whitelist.html
-├── logs/                      # Logs del sistema
+├── static/
+│   └── style.css
+├── logs/
 │   ├── api_logs.txt
 │   ├── blocked_ips.txt
 │   └── whitelist.txt
-└── scripts/
-    └── sync_blocked_ips.py    # Script opcional para sincronizar IPs
-```
+├── scripts/
+│   ├── sync_blocked_ips.py
+│   └── restart_apache_loop.sh
+└── README.md
 
----
+🔐 Flujo de funcionamiento
+Cliente accede a Apache (puerto 80).
 
-## 🔁 Flujo de funcionamiento
+Apache ejecuta check_sqli.lua.
 
-1. Cliente hace una petición HTTP a Apache.
-2. Apache ejecuta `access_check()` vía Lua.
-3. Lua construye una llamada a `http://127.0.0.1:5000/check?...`
-4. Flask evalúa si hay SQLi → si lo hay, bloquea la IP (iptables) y responde 403.
-5. Lua devuelve ese 403 a Apache → el acceso se deniega.
+Lua llama a la API local (Flask) en puerto 5000.
 
----
+La API analiza la URI y decide si bloquear:
 
-## 🔒 Seguridad
+Detecta patrones SQLi.
 
-- **Flask solo escucha en 127.0.0.1** → no accesible desde otras máquinas.
-- Toda validación pasa por Apache + Lua → solo permite acceso si no hay SQLi.
-- La whitelist impide bloquear IPs internas (como `127.0.0.1` o `0.0.0.0`).
+Aplica lógica de whitelist.
 
----
+Escribe logs.
 
-## ✅ Verificación de estado
+Bloquea IP con iptables si es necesario.
 
-```bash
+Apache sirve o deniega la petición según la respuesta.
+
+🛡️ Funcionalidad WAF
+✔️ Detección de SQLi
+Uso de payloads reales de PayloadsAllTheThings.
+
+Coincidencias exactas y expresiones regulares.
+
+✔️ Whitelist
+IPs internas o confiables no se bloquean nunca.
+
+Gestión desde /whitelist.
+
+✔️ Logs
+Logs detallados en logs/api_logs.txt.
+
+Últimos intentos se visualizan en /logs.
+
+✔️ Bloqueo manual
+Desde /logs puedes añadir una IP manualmente a iptables.
+
+También desbloquearla con un clic.
+
+🌐 Panel de administración (solo localhost)
+/ — Panel de estado
+
+/logs — Ver intentos, IPs bloqueadas, y añadir/bloquear manualmente
+
+/whitelist — Gestionar IPs exentas de bloqueo
+
+🛠️ Scripts adicionales
+🔁 sync_blocked_ips.py
+Sincroniza reglas iptables con el archivo blocked_ips.txt.
+
+Útil si reinicias sin iptables-persistent.
+
+🔁 restart_apache_loop.sh
+Reinicia Apache cada 5 segundos (modo debug/pruebas).
+
+Puede activarse en crontab con @reboot.
+
+🧪 Comprobación del sistema
 # Apache
 sudo systemctl status apache2
 
-# WebGuardian (si está como servicio systemd)
+# API
 sudo systemctl status webguardian
 
-# Estado del puerto Flask
+# Ver si puerto 5000 está activo
 ss -tuln | grep :5000
 
-# Estado de los logs
-cat /var/www/html/webguardian/logs/api_logs.txt
-```
+# Últimos 50 logs
+tail -n 50 /var/www/html/webguardian/logs/api_logs.txt
 
----
+🧼 Desbloquear IPs
+# Desde la interfaz web: /logs
+# O manualmente:
+sudo iptables -D INPUT -s <IP> -j DROP
 
-© 2025 - Proyecto WebGuardian
+✏️ Notas adicionales
+El sistema está pensado para ser accesible solo desde localhost en el backend.
+
+Apache es el único intermediario entre el exterior y la validación Lua+Flask.
+
+Se pueden añadir mejoras como backoff exponencial, geo-blocking, etc.
+
+📦 Autor
+Desarrollado por Pau Rico
+© 2025 — Proyecto WebGuardian

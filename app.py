@@ -475,29 +475,45 @@ def apache_check():
 
     return jsonify({"status": "OK"}), 200
 
-    # Inicializar estadisticas de IPs bloqueadas
-    blocked_ips = get_blocked_ips()
-    stats['blocked_ips'] = len(blocked_ips)
+@app.route("/block_ip/<ip>")
+def block_manual_ip(ip):
+    """Bloquea una IP manualmente desde la interfaz web"""
+    if not re.match(r"^(\d{1,3}\.){3}\d{1,3}$", ip):
+        return jsonify({"error": "Formato de IP inválido"}), 400
 
-    print("=================================================")
-    print("  WebGuardian: Proteccion contra SQL Injection   ")
-    print("=================================================")
-    print(f"- API iniciada en http://0.0.0.0:5000/")
-    print(f"- Panel de control: http://0.0.0.0:5000/logs")
-    print(f"- Gestion de whitelist: http://0.0.0.0:5000/whitelist")
-    print(f"- Deteccion de {len(SQLI_PAYLOADS)} patrones de SQLi")
-    print(f"- {len(load_whitelist())} IPs en whitelist")
-    print("=================================================")
+    if is_ip_whitelisted(ip):
+        return jsonify({"error": "IP en whitelist, no se puede bloquear"}), 403
 
-    # Crear carpeta de templates si no existe
-    if not os.path.exists("templates"):
-        os.makedirs("templates")
+    if is_ip_blocked(ip):
+        return jsonify({"info": "IP ya bloqueada"}), 200
 
-    # Crear carpeta de static si no existe
-    if not os.path.exists("static"):
-        os.makedirs("static")
+    result = block_ip_permanently(ip)
+    if result:
+        write_log(f"IP {ip} bloqueada manualmente desde el panel")
+        return redirect("/logs")
+    else:
+        return jsonify({"error": "No se pudo bloquear la IP"}), 500
+    
+    
+# Inicializar estadísticas de IPs bloqueadas
+blocked_ips = get_blocked_ips()
+stats['blocked_ips'] = len(blocked_ips)
 
-    # Iniciar aplicacion
-if __name__ == "__main__":
-    app.run(host='127.0.0.1', port=5000)
+# Mostrar información en consola
+print("=================================================")
+print("  WebGuardian: Protección contra SQL Injection   ")
+print("=================================================")
+print(f"- API iniciada en http://127.0.0.1:5000/")
+print(f"- Panel de control: http://127.0.0.1:5000/logs")
+print(f"- Gestión de whitelist: http://127.0.0.1:5000/whitelist")
+print(f"- Detección de {len(SQLI_PAYLOADS)} patrones de SQLi")
+print(f"- {len(load_whitelist())} IPs en whitelist")
+print("=================================================")
 
+# Crear carpeta de templates si no existe
+if not os.path.exists("templates"):
+    os.makedirs("templates")
+
+# Crear carpeta de static si no existe
+if not os.path.exists("static"):
+    os.makedirs("static")

@@ -9,12 +9,12 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>SQLi-Shield: Logs y Estad  sticas</h1>
+            <h1>SQLi-Shield: Logs y Estadísticas</h1>
             <a href="/">Volver al inicio</a>
         </div>
 
         <div class="stats-section">
-            <h2>Estad  sticas del sistema</h2>
+            <h2>Estadísticas del sistema</h2>
             <div class="stats-grid">
                 <div class="stat-item">
                     <div class="stat-value">{{ stats.total_requests }}</div>
@@ -33,7 +33,7 @@
                     <div class="stat-label">IPs en whitelist</div>
                 </div>
             </div>
-            <div class="refresh-note"> ^zltima actualizaci  n: {{ stats.last_request }}</div>
+            <div class="refresh-note">Última actualización: {{ stats.last_request }}</div>
         </div>
 
         <div class="panel">
@@ -42,7 +42,7 @@
                 {% for ip_entry in blocked_ips %}
                     <div class="log-entry">
                         {{ ip_entry.strip() }}
-                        <a href="/unblock/{{ ip_entry.split(' - ')[1] if ' - ' in ip_entry else ip_entry.strip() }}">
+                        <a href="/unblock/{{ ip_entry.split(' - ')[1] if ' - ' in ip_entry else ip_entry.strip() }}" class="unblock-button">Desbloquear</a>
                     </div>
                 {% endfor %}
             {% else %}
@@ -55,8 +55,8 @@
             <div class="whitelist-section">
                 <div>
                     <form action="/whitelist/add" method="post">
-                        <input type="text" name="ip" placeholder="A  adir IP a whitelist">
-                        <button type="submit" class="whitelist-action">A  adir</button>
+                        <input type="text" name="ip" placeholder="Añadir IP a whitelist">
+                        <button type="submit" class="whitelist-action">Añadir</button>
                     </form>
                 </div>
             </div>
@@ -67,6 +67,7 @@
                         {{ ip }}
                         {% if ip not in default_whitelist %}
                             <a href="/whitelist/remove/{{ ip }}" class="unblock-button">Eliminar</a>
+                            <a href="/block_ip/{{ ip }}" class="whitelist-action">Bloquear</a>
                         {% else %}
                             <small>(por defecto)</small>
                         {% endif %}
@@ -84,34 +85,12 @@
                     {{ log }}
                 </div>
             {% endfor %}
-            <div class="refresh-note">Esta p  gina se actualiza autom  ticamente cada 30 segundos</div>
+            <div class="refresh-note">Esta página se actualiza automáticamente cada 30 segundos</div>
         </div>
     </div>
+
     <footer>
-        <p>SQLi-Shield | Desarrollado para protecci  n contra ataques de inyecci  n SQL</p>
+        <p>SQLi-Shield | Desarrollado para protección contra ataques de inyección SQL</p>
     </footer>
-
-    <script>
-        function openTab(tabName) {
-            var i, tabContent, tabButtons;
-
-            // Ocultar todos los contenidos de pesta  as
-            tabContent = document.getElementsByClassName("tab-content");
-            for (i = 0; i < tabContent.length; i++) {
-                tabContent[i].style.display = "none";
-            }
-
-            // Desactivar todos los botones de pesta  as
-            tabButtons = document.getElementsByClassName("tab-button");
-            for (i = 0; i < tabButtons.length; i++) {
-                tabButtons[i].className = tabButtons[i].className.replace(" active", "");
-            }
-
-            // Mostrar la pesta  a actual y activar el bot  n
-            document.getElementById(tabName).style.display = "block";
-            event.currentTarget.className += " active";
-        }
-    </script>
 </body>
 </html>
-

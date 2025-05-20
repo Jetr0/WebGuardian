@@ -1,117 +1,62 @@
+# 🛡️ WebGuardian
 
-# 📘 Manual de Instalación: **WebGuardian**
-> Sistema de protección contra SQL Injection para servidores web Apache
-
----
-
-## 🔐 ¿Qué es WebGuardian?
-
-WebGuardian es un **WAF (Web Application Firewall) casero** que:
-
-- Protege **Apache** contra ataques SQLi.
-- Analiza todas las peticiones **antes de servir contenido**.
-- Usa **iptables** para bloquear IPs maliciosas.
-- Ofrece una **interfaz de control local** (API Flask) para gestionar logs y whitelist.
-- Utiliza un script **Lua** para interceptar peticiones y consultar la API.
+**WebGuardian** es un WAF (Web Application Firewall) casero diseñado para proteger un servidor Apache contra ataques por inyección SQL (SQLi). Se apoya en un hook Lua para interceptar peticiones HTTP y consultar una API Flask local que decide si se debe bloquear la IP mediante `iptables`.
 
 ---
 
-## 📦 Requisitos
+## 📂 Estructura del proyecto
 
-- Kali Linux o Debian con:
-  - Apache2
-  - Python 3.7+
-  - `iptables`
-  - `lua-socket`
-- Acceso sudo/root
-
----
-
-## 🗂️ Estructura del proyecto
-
-```
 /var/www/html/webguardian/
-│
-├── app.py                         # API WAF (solo accesible localmente)
-├── templates/                     # HTML para logs, whitelist, index
-├── static/style.css               # Estilo visual compartido
-├── logs/                          # Logs, IPs bloqueadas, whitelist
-├── scripts/sync_blocked_ips.py    # Sincronizador opcional con iptables
-├── apache_site/index.html         # Página web servida por Apache
-├── apache_site/style.css
-└── check_sqli.lua                 # Hook Lua para validar peticiones
-```
+├── apache_site/
+│ ├── index.html
+│ └── style.css
+├── app.py # API Flask que detecta SQLi y gestiona logs, whitelist y bloqueo
+├── check_sqli.lua # Hook Lua que intercepta peticiones Apache
+├── logs/
+│ ├── api_logs.txt
+│ ├── blocked_ips.txt
+│ └── whitelist.txt
+├── scripts/
+│ ├── sync_blocked_ips.py # Sincronizador opcional con iptables
+│ └── restart_apache_loop.sh # Bucle para reiniciar Apache cada 5 segundos (opcional)
+├── static/
+│ └── style.css
+└── templates/
+├── index.html
+├── logs.html
+└── whitelist.html
+
 
 ---
 
-## ⚙️ Instalación paso a paso
+## ⚙️ Requisitos
 
-### 1. 📥 Descargar y ubicar WebGuardian
+- Kali Linux o Debian
+- Python 3.7+
+- Apache2
+- `iptables` y `iptables-persistent`
+- `lua5.4`, `lua-socket`, `libapache2-mod-lua`
+
+---
+
+## 🔧 Instalación paso a paso
 
 ```bash
-sudo unzip WebGuardian.zip -d /var/www/html/
-sudo mv /var/www/html/webguardian /var/www/html/webguardian
-```
-
-### 2. 🔧 Instalar dependencias
-
-```bash
+# 1. Instalar dependencias
 sudo apt update
-sudo apt install apache2 libapache2-mod-lua python3-pip iptables-persistent lua-socket -y
+sudo apt install apache2 libapache2-mod-lua lua-socket python3-pip iptables-persistent -y
 pip3 install flask requests
-```
 
-### 3. 🧠 Activar módulos necesarios de Apache
+# 2. Crear estructura del proyecto (si no existe aún)
+sudo mkdir -p /var/www/html/webguardian
+cd /var/www/html/webguardian
 
-```bash
-sudo a2enmod lua
-sudo systemctl restart apache2
-```
+# 3. Copiar o clonar los archivos del proyecto aquí
 
-### 4. 🛡️ Crear el hook Lua (`check_sqli.lua`)
-
-Guarda en:
-```
-/var/www/html/webguardian/check_sqli.lua
-```
-
-```lua
-function access_check(r)
-    local uri = r.unparsed_uri
-    local ip = r.useragent_ip
-
-    local http = require("socket.http")
-    local ltn12 = require("ltn12")
-
-    local response_body = {}
-    local api_url = "http://127.0.0.1:5000/check?uri=" .. uri .. "&ip=" .. ip
-
-    local res, code = http.request{
-        url = api_url,
-        sink = ltn12.sink.table(response_body)
-    }
-
-    if code == 403 then
-        r:err("Bloqueado por WebGuardian: " .. ip)
-        return 403
-    end
-
-    return apache2.DECLINED
-end
-```
-
-### 5. 🧩 Configurar Apache (`webguardian.conf`)
-
-Crea o edita:
-
-```
-/etc/apache2/sites-available/webguardian.conf
-```
-
-```apache
+# 4. Configurar Apache
+sudo tee /etc/apache2/sites-available/webguardian.conf > /dev/null <<EOF
 <VirtualHost *:80>
     ServerName localhost
-
     DocumentRoot /var/www/html/webguardian/apache_site
     LuaHookAccessChecker /var/www/html/webguardian/check_sqli.lua access_check
 
@@ -119,33 +64,17 @@ Crea o edita:
         Require all granted
     </Directory>
 
-    ErrorLog ${APACHE_LOG_DIR}/webguardian_error.log
-    CustomLog ${APACHE_LOG_DIR}/webguardian_access.log combined
+    ErrorLog \${APACHE_LOG_DIR}/webguardian_error.log
+    CustomLog \${APACHE_LOG_DIR}/webguardian_access.log combined
 </VirtualHost>
-```
+EOF
 
-Luego:
-
-```bash
-sudo a2ensite webguardian.conf
+sudo a2enmod lua
+sudo a2ensite webguardian
 sudo systemctl reload apache2
-```
 
-### 6. 🚦 Iniciar la API de WebGuardian
-
-Edita `app.py`:
-
-```python
-app.run(host='127.0.0.1', port=5000)
-```
-
-Crea el servicio:
-
-```bash
-sudo nano /etc/systemd/system/webguardian.service
-```
-
-```ini
+# 5. Crear servicio systemd para la API Flask
+sudo tee /etc/systemd/system/webguardian.service > /dev/null <<EOF
 [Unit]
 Description=WebGuardian WAF API
 After=network.target
@@ -158,74 +87,64 @@ User=root
 
 [Install]
 WantedBy=multi-user.target
-```
+EOF
 
-Activa y lanza el servicio:
-
-```bash
 sudo systemctl daemon-reload
-sudo systemctl enable webguardian.service
-sudo systemctl start webguardian.service
-```
+sudo systemctl enable webguardian
+sudo systemctl start webguardian
 
-### 7. 🔁 Sincronización opcional de IPs bloqueadas
+# Crear script de reinicio
+sudo tee /usr/local/bin/restart_apache_loop.sh > /dev/null <<EOF
+#!/bin/bash
+while true; do
+    systemctl restart apache2
+    sleep 5
+done
+EOF
 
-```bash
-sudo crontab -e
-```
+sudo chmod +x /usr/local/bin/restart_apache_loop.sh
 
-Añadir:
+# Añadir a cron con @reboot
+(crontab -l 2>/dev/null; echo '@reboot /usr/local/bin/restart_apache_loop.sh &') | crontab -
 
-```bash
-*/2 * * * * /usr/bin/python3 /var/www/html/webguardian/scripts/sync_blocked_ips.py
-```
+🖥️ Interfaz web local (solo desde localhost)
+Panel principal: http://localhost:5000/
 
----
+Logs y estadísticas: http://localhost:5000/logs
 
-## ✅ Pruebas
+Gestión de whitelist: http://localhost:5000/whitelist
 
-### ✔️ Acceso limpio
-
-```bash
+# 1. Prueba normal (debe devolver 200 OK)
 curl "http://localhost/index.html"
-```
 
-✔️ Apache responde.
-
-### 🚫 Acceso con ataque SQLi
-
-```bash
+# 2. Prueba con SQLi (debe devolver 403)
 curl "http://localhost/index.html?id=1' OR '1'='1"
-```
 
-❌ Apache devuelve `403 Forbidden`  
-✅ IP es bloqueada por WebGuardian  
-✅ Log en `/var/www/html/webguardian/logs/api_logs.txt`
+✔️ Apache devuelve 403 si hay patrón SQLi.
 
----
+✔️ La IP es bloqueada vía iptables.
 
-## 🔍 Interfaz local de administración (solo desde Kali)
+✔️ Aparece log en /var/www/html/webguardian/logs/api_logs.txt
 
-```
-http://localhost:5000/logs
-http://localhost:5000/whitelist
-```
+🔐 Seguridad
+La API Flask solo escucha en 127.0.0.1.
 
----
+Solo Apache puede consultarla internamente.
 
-## 🔐 Seguridad adicional
+El hook Lua valida cada petición antes de servir contenido.
 
-- Flask solo escucha en `127.0.0.1`
-- Solo Apache accede a la API para validación
-- IPs maliciosas son bloqueadas a nivel de red
+Las IPs bloqueadas son denegadas vía iptables.
 
----
+Las IPs en whitelist están protegidas contra bloqueo.
 
-## 🧼 Desbloquear IPs
+🧼 Desbloquear IP manualmente
 
-Desde el panel: `http://localhost:5000/logs`  
-O manualmente:
-
-```bash
+# Desde el panel web: http://localhost:5000/logs
+# O manualmente:
 sudo iptables -D INPUT -s <IP> -j DROP
-```
+
+🧩 Autor y créditos
+Desarrollado por Pau Rico para fines educativos y de ciberseguridad ofensiva defensiva.
+Basado en payloads y patrones de la comunidad como PayloadsAllTheThings.
+
+© 2025 - Proyecto WebGuardian
